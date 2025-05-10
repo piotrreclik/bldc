@@ -18,7 +18,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma GCC push_options
 #pragma GCC optimize ("Os")
 
 #include "app.h"
@@ -43,7 +42,7 @@
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
-static THD_WORKING_AREA(pas_thread_wa, 512);
+__attribute__((section(".ram4"))) static THD_WORKING_AREA(pas_thread_wa, 512);
 
 // Private variables
 static volatile pas_config config;
@@ -74,7 +73,7 @@ void app_pas_configure(pas_config *conf) {
 	max_pulse_period = 1.0 / ((config.pedal_rpm_start / 60.0) * config.magnets) * 1.2;
 
 	// if pedal spins at x3 the end rpm, assume its beyond limits
-	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 3.0 / 60.0));
+	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 5.0 / 60.0));
 
 	(config.invert_pedal_direction) ? (direction_conf = -1.0) : (direction_conf = 1.0);
 }
@@ -125,45 +124,41 @@ float app_pas_get_pedal_rpm(void) {
 
 void pas_event_handler(void) {
 #ifdef HW_PAS1_PORT
-	const int8_t QEM[] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
+	const int8_t QEM[] = {0,-1,1,2,
+						  1,0,2,-1,
+						 -1,2,0,1,
+						  2,1,-1,0}; // Quadrature Encoder Matrix
 	int8_t direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
-	static float old_timestamp = 0;
+	static systime_t old_timestamp = 0;
 	static float inactivity_time = 0;
-	static float period_filtered = 0;
+	static float period_filtered = 2.0;
 	static int32_t correct_direction_counter = 0;
 
 	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
 	new_state = PAS2_level * 2 + PAS1_level;
-	direction_qem = (float) QEM[old_state * 4 + new_state];
+	direction_qem = QEM[old_state * 4 + new_state];
 	old_state = new_state;
-
-	// Require several quadrature events in the right direction to prevent vibrations from
-	// engging PAS
-	int8_t direction = (direction_conf * direction_qem);
 	
-	switch(direction) {
+	switch(direction_qem) {
 		case 1: correct_direction_counter++; break;
-		case -1:correct_direction_counter = 0; break;
+		case -1:correct_direction_counter = correct_direction_counter > 0 ? correct_direction_counter - 1 : 0; break;
 	}
 
-	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
-
-	// sensors are poorly placed, so use only one rising edge as reference
-	if( (new_state == 3) && (correct_direction_counter >= 4) ) {
-		float period = (timestamp - old_timestamp) * (float)config.magnets;
+	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > 10) {
+		systime_t timestamp = chVTGetSystemTimeX();
+		float period = ((float)(timestamp - old_timestamp)) * (float)config.magnets / (float)CH_CFG_ST_FREQUENCY;
 		old_timestamp = timestamp;
 
-		UTILS_LP_FAST(period_filtered, period, 1.0);
+		UTILS_LP_FAST(period_filtered, period, pedal_rpm > config.pedal_rpm_start ? 0.5 : 1.0);
 
 		if(period_filtered < min_pedal_period) { //can't be that short, abort
 			return;
 		}
 		pedal_rpm = 60.0 / period_filtered;
-		pedal_rpm *= (direction_conf * (float)direction_qem);
 		inactivity_time = 0.0;
 		correct_direction_counter = 0;
 	}
@@ -173,6 +168,7 @@ void pas_event_handler(void) {
 		//if no pedal activity, set RPM as zero
 		if(inactivity_time > max_pulse_period) {
 			pedal_rpm = 0.0;
+			period_filtered = 2.0;
 		}
 	}
 #endif
@@ -193,7 +189,7 @@ static THD_FUNCTION(pas_thread, arg) {
 
 	for(;;) {
 		// Sleep for a time according to the specified rate
-		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
+		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz / 2;
 
 		// At least one tick should be slept to not block the other threads
 		if (sleep_time == 0) {
@@ -227,8 +223,9 @@ static THD_FUNCTION(pas_thread, arg) {
 				// NOTE: If the limits are the same a numerical instability is approached, so in that case
 				// just use on/off control (which is what setting the limits to the same value essentially means).
 				if (config.pedal_rpm_end > (config.pedal_rpm_start + 1.0)) {
-					output = utils_map(pedal_rpm, config.pedal_rpm_start, config.pedal_rpm_end, 0.0, config.current_scaling * sub_scaling);
-					utils_truncate_number(&output, 0.0, config.current_scaling * sub_scaling);
+					float total_current_scaling = config.current_scaling * sub_scaling;
+					output = utils_map(pedal_rpm, config.pedal_rpm_start, config.pedal_rpm_end, 0.0, total_current_scaling);
+					utils_truncate_number(&output, 0.0, total_current_scaling);
 				} else {
 					if (pedal_rpm > config.pedal_rpm_end) {
 						output = config.current_scaling * sub_scaling;
@@ -316,5 +313,3 @@ static THD_FUNCTION(pas_thread, arg) {
 		}
 	}
 }
-
-#pragma GCC pop_options
