@@ -107,7 +107,7 @@
 
 // Component parameters (can be overridden)
 #ifndef V_REG
-#define V_REG					3.433 // (jaykup) Updated from @1zuna's calculations.  75_300 was 3.44
+#define V_REG					3.459 // (jaykup) Updated from @1zuna's calculations.  75_300 was 3.44
 #endif
 #ifndef VIN_R1
 #define VIN_R1					56000.0 //
