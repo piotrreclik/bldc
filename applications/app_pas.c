@@ -144,11 +144,11 @@ void pas_event_handler(void) {
 	old_state = new_state;
 	
 	switch(direction_qem) {
-		case 1: correct_direction_counter++; break;
+		case 1: correct_direction_counter = correct_direction_counter > 12 ? correct_direction_counter : correct_direction_counter + 1; break;
 		case -1:correct_direction_counter = correct_direction_counter > 0 ? correct_direction_counter - 1 : 0; break;
 	}
 
-	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > 10) {
+	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > 12) {
 		systime_t timestamp = chVTGetSystemTimeX();
 		float period = ((float)(timestamp - old_timestamp)) * (float)config.magnets / (float)CH_CFG_ST_FREQUENCY;
 		old_timestamp = timestamp;

@@ -16,13 +16,13 @@
 #define MCCONF_SENSOR_MODE 0
 
 // Motor Current Max
-#define MCCONF_L_CURRENT_MAX 85
+#define MCCONF_L_CURRENT_MAX 80
 
 // Motor Current Max Brake
 #define MCCONF_L_CURRENT_MIN -10
 
 // Battery Current Max
-#define MCCONF_L_IN_CURRENT_MAX 70
+#define MCCONF_L_IN_CURRENT_MAX 60
 
 // Battery Current Max Regen
 #define MCCONF_L_IN_CURRENT_MIN -6
@@ -55,7 +55,7 @@
 #define MCCONF_L_MIN_VOLTAGE 12
 
 // Maximum Input Voltage
-#define MCCONF_L_MAX_VOLTAGE 90
+#define MCCONF_L_MAX_VOLTAGE 88
 
 // Battery Voltage Cutoff Start
 #define MCCONF_L_BATTERY_CUT_START 43.6
@@ -157,13 +157,13 @@
 #define MCCONF_HALL_ERPM 2000
 
 // Current KP
-#define MCCONF_FOC_CURRENT_KP 0.1237
+#define MCCONF_FOC_CURRENT_KP 0.223
 
 // Current KI
-#define MCCONF_FOC_CURRENT_KI 32.6
+#define MCCONF_FOC_CURRENT_KI 37.77
 
 // Zero Vector Frequency
-#define MCCONF_FOC_F_ZV 50000
+#define MCCONF_FOC_F_ZV 30000
 
 // Dead Time Compensation
 #define MCCONF_FOC_DT_US 0.12
@@ -187,19 +187,19 @@
 #define MCCONF_FOC_PLL_KI 30000
 
 // Motor Inductance (L)
-#define MCCONF_FOC_MOTOR_L 0.00012374
+#define MCCONF_FOC_MOTOR_L 0.000223
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 2.8e-05
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 3.33e-05
 
 // Motor Resistance (R)
-#define MCCONF_FOC_MOTOR_R 0.0326
+#define MCCONF_FOC_MOTOR_R 0.0377
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.020438
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.019332
 
 // Observer Gain (x1M)
-#define MCCONF_FOC_OBSERVER_GAIN 1.67e+06
+#define MCCONF_FOC_OBSERVER_GAIN 2.56e+06
 
 // Observer Gain At Minimum Duty
 #define MCCONF_FOC_OBSERVER_GAIN_SLOW 0.3
@@ -343,31 +343,31 @@
 #define MCCONF_FOC_OFFSETS_CAL_ON_BOOT 0
 
 // Current Offset 0
-#define MCCONF_FOC_OFFSETS_CURRENT_0 2041.8
+#define MCCONF_FOC_OFFSETS_CURRENT_0 2043.76
 
 // Current Offset 1
-#define MCCONF_FOC_OFFSETS_CURRENT_1 2044.34
+#define MCCONF_FOC_OFFSETS_CURRENT_1 2046.51
 
 // Current Offset 2
-#define MCCONF_FOC_OFFSETS_CURRENT_2 2048.7
+#define MCCONF_FOC_OFFSETS_CURRENT_2 2050.38
 
 // Voltage Offset 0
-#define MCCONF_FOC_OFFSETS_VOLTAGE_0 0.0002
+#define MCCONF_FOC_OFFSETS_VOLTAGE_0 -0.0002
 
 // Voltage Offset 1
-#define MCCONF_FOC_OFFSETS_VOLTAGE_1 -0.0006
+#define MCCONF_FOC_OFFSETS_VOLTAGE_1 -0.0005
 
 // Voltage Offset 2
-#define MCCONF_FOC_OFFSETS_VOLTAGE_2 0.0003
+#define MCCONF_FOC_OFFSETS_VOLTAGE_2 0.0008
 
 // Voltage Offset Undriven 0
-#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_0 0.0006
+#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_0 -0.0005
 
 // Voltage Offset Undriven 1
-#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_1 0.0004
+#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_1 0.0003
 
 // Voltage Offset Undriven 2
-#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_2 -0.0011
+#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_2 0.0001
 
 // Enable Phase Filters
 #define MCCONF_FOC_PHASE_FILTER_ENABLE 1
@@ -541,10 +541,10 @@
 #define MCCONF_SI_MOTOR_POLES 8
 
 // Gear Ratio
-#define MCCONF_SI_GEAR_RATIO 12.569
+#define MCCONF_SI_GEAR_RATIO 15.269
 
 // Wheel Diameter
-#define MCCONF_SI_WHEEL_DIAMETER 0.75
+#define MCCONF_SI_WHEEL_DIAMETER 0.71
 
 // Battery Type
 #define MCCONF_SI_BATTERY_TYPE 0
@@ -553,10 +553,10 @@
 #define MCCONF_SI_BATTERY_CELLS 14
 
 // Battery Capacity
-#define MCCONF_SI_BATTERY_AH 20
+#define MCCONF_SI_BATTERY_AH 18
 
 // Motor No Load Current
-#define MCCONF_SI_MOTOR_NL_CURRENT 1
+#define MCCONF_SI_MOTOR_NL_CURRENT 0.5
 
 // BMS Type
 #define MCCONF_BMS_TYPE 1
