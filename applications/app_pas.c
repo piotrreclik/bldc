@@ -86,6 +86,10 @@ void app_pas_configure(pas_config *conf) {
  * false when PAS app shares control with the ADC app for current command
  */
 void app_pas_start(bool is_primary_output) {
+#ifdef HW_PAS1_PORT
+	palSetPadMode(HW_PAS1_PORT, HW_PAS1_PIN, PAL_MODE_INPUT_PULLUP);
+	palSetPadMode(HW_PAS2_PORT, HW_PAS2_PIN, PAL_MODE_INPUT_PULLUP);
+#endif
 	stop_now = false;
 	chThdCreateStatic(pas_thread_wa, sizeof(pas_thread_wa), NORMALPRIO, pas_thread, NULL);
 
@@ -144,8 +148,10 @@ void pas_event_handler(void) {
 	old_state = new_state;
 	
 	switch(direction_qem) {
-		case 1: correct_direction_counter = correct_direction_counter > 12 ? correct_direction_counter : correct_direction_counter + 1; break;
-		case -1:correct_direction_counter = correct_direction_counter > 0 ? correct_direction_counter - 1 : 0; break;
+		case 1: correct_direction_counter = correct_direction_counter > 12 ? 
+				correct_direction_counter : correct_direction_counter + 1; break;
+		case -1:correct_direction_counter = correct_direction_counter > 0 ? 
+				correct_direction_counter - 1 : 0; break;
 	}
 
 	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > 12) {
@@ -180,16 +186,11 @@ static THD_FUNCTION(pas_thread, arg) {
 	float output = 0;
 	chRegSetThreadName("APP_PAS");
 
-#ifdef HW_PAS1_PORT
-	palSetPadMode(HW_PAS1_PORT, HW_PAS1_PIN, PAL_MODE_INPUT_PULLUP);
-	palSetPadMode(HW_PAS2_PORT, HW_PAS2_PIN, PAL_MODE_INPUT_PULLUP);
-#endif
-
 	is_running = true;
 
 	for(;;) {
 		// Sleep for a time according to the specified rate
-		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz / 2;
+		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
 
 		// At least one tick should be slept to not block the other threads
 		if (sleep_time == 0) {

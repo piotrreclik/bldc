@@ -72,7 +72,7 @@
 
 #ifdef HW_LIM_VIN
 #undef HW_LIM_VIN
-#define HW_LIM_VIN				11.0, 88.0
+#define HW_LIM_VIN				11.0, 90.0
 #endif
 
 // HW-specific functions
