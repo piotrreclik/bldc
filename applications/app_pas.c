@@ -18,6 +18,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#pragma GCC push_options
 #pragma GCC optimize ("Os")
 
 #include "app.h"
@@ -42,7 +43,7 @@
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
-__attribute__((section(".ram4"))) static THD_WORKING_AREA(pas_thread_wa, 512);
+static THD_WORKING_AREA(pas_thread_wa, 512);
 
 // Private variables
 static volatile pas_config config;
@@ -128,10 +129,10 @@ float app_pas_get_pedal_rpm(void) {
 
 void pas_event_handler(void) {
 #ifdef HW_PAS1_PORT
-	const int8_t QEM[] = {0,-1,1,2,
-						  1,0,2,-1,
-						 -1,2,0,1,
-						  2,1,-1,0}; // Quadrature Encoder Matrix
+	const int8_t QEM[] = {0,-1, 1, 2,
+						  1, 0, 2,-1,
+						 -1, 2, 0, 1,
+						  2, 1,-1, 0}; // Quadrature Encoder Matrix
 	int8_t direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
@@ -159,7 +160,7 @@ void pas_event_handler(void) {
 		float period = ((float)(timestamp - old_timestamp)) * (float)config.magnets / (float)CH_CFG_ST_FREQUENCY;
 		old_timestamp = timestamp;
 
-		UTILS_LP_FAST(period_filtered, period, pedal_rpm > config.pedal_rpm_start ? 0.5 : 1.0);
+		UTILS_LP_FAST(period_filtered, period, pedal_rpm > config.pedal_rpm_start ? 0.6 : 1.0);
 
 		if(period_filtered < min_pedal_period) { //can't be that short, abort
 			return;
@@ -190,7 +191,7 @@ static THD_FUNCTION(pas_thread, arg) {
 
 	for(;;) {
 		// Sleep for a time according to the specified rate
-		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
+		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz / 2;
 
 		// At least one tick should be slept to not block the other threads
 		if (sleep_time == 0) {
@@ -314,3 +315,5 @@ static THD_FUNCTION(pas_thread, arg) {
 		}
 	}
 }
+
+#pragma GCC pop_options
