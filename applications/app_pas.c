@@ -18,7 +18,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma GCC push_options
 #pragma GCC optimize ("Os")
 
 #include "app.h"
@@ -43,7 +42,7 @@
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
-static THD_WORKING_AREA(pas_thread_wa, 512);
+__attribute__((section(".ram4"))) static THD_WORKING_AREA(pas_thread_wa, 512);
 
 // Private variables
 static volatile pas_config config;
@@ -58,6 +57,7 @@ static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile float torque_ratio = 0.0;
+static volatile int engagement_pulses = 0;
 
 /**
  * Configure and initialize PAS application
@@ -71,12 +71,18 @@ void app_pas_configure(pas_config *conf) {
 	output_current_rel = 0.0;
 
 	// a period longer than this should immediately reduce power to zero
-	max_pulse_period = 1.0 / ((config.pedal_rpm_start / 60.0) * config.magnets) * 1.2;
+	max_pulse_period = 1.0 / ((config.pedal_rpm_start / 60.0) * config.magnets * 4) * 1.2;
 
-	// if pedal spins at x3 the end rpm, assume its beyond limits
-	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 5.0 / 60.0));
+	// if pedal spins at x2.5 the end rpm, assume its beyond limits
+	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 2.5 / 60.0) * config.magnets * 4);
 
 	(config.invert_pedal_direction) ? (direction_conf = -1.0) : (direction_conf = 1.0);
+
+
+  	int pedal_rpm_start_int = (int) config.pedal_rpm_start;
+  	double engagement_multiplier = config.pedal_rpm_start - pedal_rpm_start_int;
+	int calculated_engagement_pulses = engagement_multiplier * 2 * config.magnets;
+	engagement_pulses = calculated_engagement_pulses < 4 ? 4 : calculated_engagement_pulses;
 }
 
 /**
@@ -136,46 +142,53 @@ void pas_event_handler(void) {
 	int8_t direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
-	static systime_t old_timestamp = 0;
+	static systime_t old_sys_time = 0;
 	static float inactivity_time = 0;
-	static float period_filtered = 2.0;
+	static float period_filtered_seconds = 0.0;
 	static int32_t correct_direction_counter = 0;
 
 	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
 	new_state = PAS2_level * 2 + PAS1_level;
-	direction_qem = QEM[old_state * 4 + new_state];
+	direction_qem = (float) QEM[old_state * 4 + new_state];
 	old_state = new_state;
+
+	// Require several quadrature events in the right direction to prevent vibrations from
+	// engging PAS
+	int8_t direction = (direction_conf * direction_qem);
 	
-	switch(direction_qem) {
-		case 1: correct_direction_counter = correct_direction_counter > 12 ? 
+	switch(direction) {
+		case 1: correct_direction_counter = correct_direction_counter > engagement_pulses ? 
 				correct_direction_counter : correct_direction_counter + 1; break;
 		case -1:correct_direction_counter = correct_direction_counter > 0 ? 
 				correct_direction_counter - 1 : 0; break;
 	}
 
-	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > 12) {
-		systime_t timestamp = chVTGetSystemTimeX();
-		float period = ((float)(timestamp - old_timestamp)) * (float)config.magnets / (float)CH_CFG_ST_FREQUENCY;
-		old_timestamp = timestamp;
+	// sensors are poorly placed, so use only one rising edge as reference
+	if((pedal_rpm > config.pedal_rpm_start && correct_direction_counter > 0) || correct_direction_counter > engagement_pulses) {
+		systime_t sys_time = chVTGetSystemTimeX();
+		uint32_t period_ticks = sys_time - old_sys_time;
+		old_sys_time = sys_time;
 
-		UTILS_LP_FAST(period_filtered, period, pedal_rpm > config.pedal_rpm_start ? 0.6 : 1.0);
+        float period_seconds = (float)period_ticks / (float)CH_CFG_ST_FREQUENCY;
 
-		if(period_filtered < min_pedal_period) { //can't be that short, abort
+		UTILS_LP_FAST(period_filtered_seconds, period_seconds, pedal_rpm > config.pedal_rpm_start ? 0.4 : 1.0);
+
+		if(period_filtered_seconds < min_pedal_period) { //can't be that short, abort
 			return;
 		}
-		pedal_rpm = 60.0 / period_filtered;
+		pedal_rpm = 60.0 / period_filtered_seconds;
+		pedal_rpm *= (direction_conf * (float)direction_qem);
 		inactivity_time = 0.0;
 		correct_direction_counter = 0;
 	}
 	else {
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
+		inactivity_time += 1.0 / ((float)config.update_rate_hz * 2.0);
 
 		//if no pedal activity, set RPM as zero
 		if(inactivity_time > max_pulse_period) {
 			pedal_rpm = 0.0;
-			period_filtered = 2.0;
 		}
 	}
 #endif
@@ -186,6 +199,11 @@ static THD_FUNCTION(pas_thread, arg) {
 
 	float output = 0;
 	chRegSetThreadName("APP_PAS");
+
+#ifdef HW_PAS1_PORT
+	palSetPadMode(HW_PAS1_PORT, HW_PAS1_PIN, PAL_MODE_INPUT_PULLUP);
+	palSetPadMode(HW_PAS2_PORT, HW_PAS2_PIN, PAL_MODE_INPUT_PULLUP);
+#endif
 
 	is_running = true;
 
@@ -315,5 +333,3 @@ static THD_FUNCTION(pas_thread, arg) {
 		}
 	}
 }
-
-#pragma GCC pop_options
