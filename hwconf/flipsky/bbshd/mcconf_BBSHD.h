@@ -16,16 +16,16 @@
 #define MCCONF_SENSOR_MODE 0
 
 // Motor Current Max
-#define MCCONF_L_CURRENT_MAX 70
+#define MCCONF_L_CURRENT_MAX 90
 
 // Motor Current Max Brake
 #define MCCONF_L_CURRENT_MIN -10
 
 // Battery Current Max
-#define MCCONF_L_IN_CURRENT_MAX 50
+#define MCCONF_L_IN_CURRENT_MAX 60
 
 // Battery Current Max Regen
-#define MCCONF_L_IN_CURRENT_MIN -6
+#define MCCONF_L_IN_CURRENT_MIN -10
 
 // Input Current Limit Map Start
 #define MCCONF_L_IN_CURRENT_MAP_START 1
@@ -34,13 +34,13 @@
 #define MCCONF_L_IN_CURRENT_MAP_FILTER 0.005
 
 // Absolute Maximum Current
-#define MCCONF_L_MAX_ABS_CURRENT 120
+#define MCCONF_L_MAX_ABS_CURRENT 140
 
 // Max ERPM Reverse
-#define MCCONF_L_RPM_MIN 0
+#define MCCONF_L_RPM_MIN -4200
 
 // Max ERPM
-#define MCCONF_L_RPM_MAX 33700
+#define MCCONF_L_RPM_MAX 38700
 
 // ERPM Limit Start
 #define MCCONF_L_RPM_START 0.8
@@ -97,7 +97,7 @@
 #define MCCONF_L_WATT_MAX 3500
 
 // Maximum Braking Wattage
-#define MCCONF_L_WATT_MIN 0
+#define MCCONF_L_WATT_MIN -1000
 
 // Max Current Scale
 #define MCCONF_L_CURRENT_MAX_SCALE 1.0
@@ -157,10 +157,10 @@
 #define MCCONF_HALL_ERPM 2000
 
 // Current KP
-#define MCCONF_FOC_CURRENT_KP 0.2157
+#define MCCONF_FOC_CURRENT_KP 0.2264
 
 // Current KI
-#define MCCONF_FOC_CURRENT_KI 39.3
+#define MCCONF_FOC_CURRENT_KI 43.77
 
 // Zero Vector Frequency
 #define MCCONF_FOC_F_ZV 30000
@@ -187,19 +187,19 @@
 #define MCCONF_FOC_PLL_KI 30000
 
 // Motor Inductance (L)
-#define MCCONF_FOC_MOTOR_L 0.0002157
+#define MCCONF_FOC_MOTOR_L 0.0002264
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 9e-05
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.0001078
 
 // Motor Resistance (R)
-#define MCCONF_FOC_MOTOR_R 0.0393
+#define MCCONF_FOC_MOTOR_R 0.0437
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.019499
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.019355
 
 // Observer Gain (x1M)
-#define MCCONF_FOC_OBSERVER_GAIN 2.49e+06
+#define MCCONF_FOC_OBSERVER_GAIN 1.77e+06
 
 // Observer Gain At Minimum Duty
 #define MCCONF_FOC_OBSERVER_GAIN_SLOW 0.3
@@ -292,13 +292,13 @@
 #define MCCONF_FOC_SAT_COMP_MODE 1
 
 // Saturation Compensation Factor
-#define MCCONF_FOC_SAT_COMP 0.07
+#define MCCONF_FOC_SAT_COMP 0.05
 
 // Temp Comp
 #define MCCONF_FOC_TEMP_COMP 1
 
 // Temp Comp Base Temp
-#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 19.2
+#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 25.2
 
 // Current Filter Constant
 #define MCCONF_FOC_CURRENT_FILTER_CONST 0.1
@@ -307,7 +307,7 @@
 #define MCCONF_FOC_CC_DECOUPLING 0
 
 // Observer Type
-#define MCCONF_FOC_OBSERVER_TYPE 0
+#define MCCONF_FOC_OBSERVER_TYPE 2
 
 // HFI Start Voltage
 #define MCCONF_FOC_HFI_VOLTAGE_START 20
@@ -343,28 +343,28 @@
 #define MCCONF_FOC_OFFSETS_CAL_ON_BOOT 0
 
 // Current Offset 0
-#define MCCONF_FOC_OFFSETS_CURRENT_0 2043.58
+#define MCCONF_FOC_OFFSETS_CURRENT_0 2042.52
 
 // Current Offset 1
-#define MCCONF_FOC_OFFSETS_CURRENT_1 2046.14
+#define MCCONF_FOC_OFFSETS_CURRENT_1 2045.26
 
 // Current Offset 2
-#define MCCONF_FOC_OFFSETS_CURRENT_2 2050.02
+#define MCCONF_FOC_OFFSETS_CURRENT_2 2049.36
 
 // Voltage Offset 0
-#define MCCONF_FOC_OFFSETS_VOLTAGE_0 -0.0009
+#define MCCONF_FOC_OFFSETS_VOLTAGE_0 -0.001
 
 // Voltage Offset 1
-#define MCCONF_FOC_OFFSETS_VOLTAGE_1 0
+#define MCCONF_FOC_OFFSETS_VOLTAGE_1 -0.0002
 
 // Voltage Offset 2
-#define MCCONF_FOC_OFFSETS_VOLTAGE_2 0.001
+#define MCCONF_FOC_OFFSETS_VOLTAGE_2 0.0012
 
 // Voltage Offset Undriven 0
-#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_0 -0.0002
+#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_0 -0.0004
 
 // Voltage Offset Undriven 1
-#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_1 0.0002
+#define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_1 0.0003
 
 // Voltage Offset Undriven 2
 #define MCCONF_FOC_OFFSETS_VOLTAGE_UNDRIVEN_2 0
@@ -382,7 +382,7 @@
 #define MCCONF_FOC_MTPA_MODE 1
 
 // Field Weakening Current Max
-#define MCCONF_FOC_FW_CURRENT_MAX 22
+#define MCCONF_FOC_FW_CURRENT_MAX 18
 
 // Field Weakening Duty Start
 #define MCCONF_FOC_FW_DUTY_START 0.925
@@ -454,7 +454,7 @@
 #define MCCONF_CC_STARTUP_BOOST_DUTY 0.01
 
 // Minimum Current
-#define MCCONF_CC_MIN_CURRENT 2
+#define MCCONF_CC_MIN_CURRENT 1
 
 // Current Controller Gain
 #define MCCONF_CC_GAIN 0.0046
