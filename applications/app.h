@@ -87,5 +87,6 @@ void app_pas_set_current_sub_scaling(float current_sub_scaling);
 void app_custom_start(void);
 void app_custom_stop(void);
 void app_custom_configure(app_configuration *conf);
+void pas_pin_isr(void);
 
 #endif /* APP_H_ */
