@@ -40,6 +40,7 @@
 #define MIN_MS_WITHOUT_POWER			500
 #define PULSES_TIME_SAMPLES_COUNT		5
 #define ENGAGEMENT_COUNTER_TIMEOUT_SECONDS 0.5F
+#define ENGAGEMENT_ANGLE 				180.0F
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
@@ -53,7 +54,7 @@ static volatile pas_config config;
 static volatile float sub_scaling = 1.0;
 static volatile float output_current_rel = 0.0;
 static volatile float ms_without_power = 0.0;
-static volatile float max_pulse_period = 0.0;
+static volatile float max_inactivity_time = 0.0;
 static volatile float direction_conf = 0.0;
 static volatile float pedal_rpm = 0;
 static volatile bool primary_output = false;
@@ -78,15 +79,14 @@ void app_pas_configure(pas_config *conf) {
 	ms_without_power = 0.0;
 	output_current_rel = 0.0;
 
-	// a period longer than this should immediately reduce power to zero
-	max_pulse_period = 1.0 / ((config.pedal_rpm_start / 60.0) * config.magnets * 4) * 1.2;
-
 	(config.invert_pedal_direction) ? (direction_conf = -1.0) : (direction_conf = 1.0);
 	rotation_pulses = config.magnets * 4;
 
   	pedal_rpm_start = (config.pedal_rpm_start < 1 ? 1 : floor(config.pedal_rpm_start));
+	// inactivity longer than this should immediately reduce power to zero
+	max_inactivity_time = 1.0 / ((pedal_rpm_start / 60.0) * config.magnets * 4) * 1.2;
   	float engagement_multiplier = config.pedal_rpm_start - pedal_rpm_start;
-	int calculated_engagement_pulses = engagement_multiplier * 2 * config.magnets;
+	int calculated_engagement_pulses = engagement_multiplier * ENGAGEMENT_ANGLE / 360.0 * 4 * config.magnets;
 	engagement_pulses = calculated_engagement_pulses < 5 ? 5 : calculated_engagement_pulses;
 }
 
@@ -234,6 +234,15 @@ static void read_isr_count(int argc, const char **argv) {
 		pulse_time_sample_index / rotation_pulses / 2);
 }
 
+float get_rpm(void) {
+	uint32_t pulses_ticks_sum = 0; 
+	for (uint32_t pi = pulse_time_sample_index - 1; pi > pulse_time_sample_index - PULSES_TIME_SAMPLES_COUNT; pi--) {
+		pulses_ticks_sum += pulse_time_samples[pi % PULSES_TIME_SAMPLES_COUNT] - pulse_time_samples[(pi - 1) % PULSES_TIME_SAMPLES_COUNT];
+	}
+	float average_pulse_seconds = (float)(pulses_ticks_sum / (float)(PULSES_TIME_SAMPLES_COUNT - 1)) /(float)CH_CFG_ST_FREQUENCY;
+	return 60.0 / (float)(rotation_pulses * average_pulse_seconds);
+}
+
 void caclulate_pas_rpm(void) {
 #ifdef HW_PAS1_PORT
 	static float inactivity_time = 0;
@@ -257,24 +266,23 @@ void caclulate_pas_rpm(void) {
 	}
 
 	if (counter_diff > 0) {
-		uint32_t pulses_ticks_sum = 0; 
-		for (uint32_t pi = pulse_time_sample_index - 1; pi > pulse_time_sample_index - PULSES_TIME_SAMPLES_COUNT; pi--) {
-			pulses_ticks_sum += pulse_time_samples[pi % PULSES_TIME_SAMPLES_COUNT] - pulse_time_samples[(pi - 1) % PULSES_TIME_SAMPLES_COUNT];
-		}
-		float average_pulse_seconds = (float)(pulses_ticks_sum / (float)(PULSES_TIME_SAMPLES_COUNT - 1)) /(float)CH_CFG_ST_FREQUENCY;
-		tracked_pedal_rpm =  60.0 / (float)(rotation_pulses * average_pulse_seconds);
+		tracked_pedal_rpm = get_rpm();
 	}
 	
-	if ((pedal_rpm > pedal_rpm_start && counter_diff > 0)
+	if ((pedal_rpm > pedal_rpm_start && engagement_counter > 1)
 		|| (tracked_pedal_rpm > pedal_rpm_start && engagement_counter > engagement_pulses)) {
 		UTILS_LP_FAST(pedal_rpm, tracked_pedal_rpm, pedal_rpm > pedal_rpm_start ? 0.6 : 1.0);
 		engagement_counter = 0;
 		inactivity_time = 0;
 	} else {
 		inactivity_time += 1.0 / (float)config.update_rate_hz;
+		if (counter_diff < 0) {
+			// TODO separate disengagement counter? 
+			inactivity_time -= (float) counter_diff * max_inactivity_time / 5.0;
+		}
 
-		//if no pedal activity, set RPM as zero
-		if(inactivity_time > max_pulse_period) {
+		//if no engagement pedal activity, set RPM as zero
+		if(inactivity_time > max_inactivity_time) {
 			pedal_rpm = 0.0;
 		}
 	}
@@ -332,7 +340,7 @@ static THD_FUNCTION(pas_thread, arg) {
 				if (config.pedal_rpm_end > (pedal_rpm_start + 1.0)) {
 					float total_current_scaling = config.current_scaling * sub_scaling;
 					output = pedal_rpm > pedal_rpm_start ? 
-						utils_map(pedal_rpm, pedal_rpm_start, config.pedal_rpm_end, total_current_scaling / 3.0, total_current_scaling) : 
+						utils_map(pedal_rpm, pedal_rpm_start, config.pedal_rpm_end, total_current_scaling / 1.5, total_current_scaling) : 
 						0.0;
 					utils_truncate_number(&output, 0.0, total_current_scaling);
 				} else {
