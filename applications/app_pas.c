@@ -210,15 +210,14 @@ void pas_pin_isr(void) {
        -1, // 11 to 10
         0, // 11 to 11
 	};
-	static uint8_t direction_isr = 0;
 	static uint8_t lut_index = 16;
+	uint8_t direction_isr = 0;
     lut_index |= palReadPad(HW_PAS1_PORT, HW_PAS1_PIN)<<1 | palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 	int8_t lut_value = counter_lut[lut_index];
     pulses_counter += direction_conf * lut_value;
 
     if (lut_value != 0) {
-        direction_isr = (lut_value > 0) ? 1 : 0;
-		direction_isr *= direction_conf;
+        direction_isr = ((direction_conf * lut_value) > 0) ? 1 : 0;
 		if (direction_isr > 0) {
 			pulse_time_samples[pulse_time_sample_index++ % PULSES_TIME_SAMPLES_COUNT] = chVTGetSystemTimeX();
 		}
