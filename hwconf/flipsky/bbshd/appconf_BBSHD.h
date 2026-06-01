@@ -58,7 +58,7 @@
 #define APPCONF_KILL_SW_MODE 0
 
 // APP to Use
-#define APPCONF_APP_TO_USE 10
+//#define APPCONF_APP_TO_USE 10
 
 // Control Type
 #define APPCONF_PPM_CTRL_TYPE 0
@@ -124,10 +124,10 @@
 #define APPCONF_ADC_HYST 0.01
 
 // ADC1 Start Voltage
-#define APPCONF_ADC_VOLTAGE_START 0.94
+#define APPCONF_ADC_VOLTAGE_START 0.97
 
 // ADC1 End Voltage
-#define APPCONF_ADC_VOLTAGE_END 2.65
+#define APPCONF_ADC_VOLTAGE_END 2.7
 
 // ADC1 Abs Min Voltage
 #define APPCONF_ADC_VOLTAGE_MIN 0
@@ -136,7 +136,7 @@
 #define APPCONF_ADC_VOLTAGE_MAX 3.5
 
 // ADC1 Center Voltage
-#define APPCONF_ADC_VOLTAGE_CENTER 1.76
+#define APPCONF_ADC_VOLTAGE_CENTER 1.81
 
 // ADC2 Start Voltage
 #define APPCONF_ADC_VOLTAGE2_START 0.9
@@ -160,7 +160,7 @@
 #define APPCONF_ADC_VOLTAGE2_INVERTED 0
 
 // Throttle Expo
-#define APPCONF_ADC_THROTTLE_EXP 0
+#define APPCONF_ADC_THROTTLE_EXP 1.5
 
 // Throttle Expo Brake
 #define APPCONF_ADC_THROTTLE_EXP_BRAKE 0
@@ -172,7 +172,7 @@
 #define APPCONF_ADC_RAMP_TIME_POS 0.3
 
 // Negative Ramping Time
-#define APPCONF_ADC_RAMP_TIME_NEG 0.1
+#define APPCONF_ADC_RAMP_TIME_NEG 0.05
 
 // Multiple VESCs Over CAN
 #define APPCONF_ADC_MULTI_ESC 0
@@ -271,7 +271,7 @@
 #define APPCONF_PAS_CURRENT_SCALING 0.7
 
 // Pedal RPM Start
-#define APPCONF_PAS_PEDAL_RPM_START 6.4
+#define APPCONF_PAS_PEDAL_RPM_START 6.5
 
 // Pedal RPM End
 #define APPCONF_PAS_PEDAL_RPM_END 90

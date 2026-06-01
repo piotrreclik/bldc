@@ -54,7 +54,12 @@
 // Component parameters (can be overridden)
 #ifdef V_REG
 #undef V_REG
-#define V_REG					3.458 //pro v2 seems to like it
+#define V_REG					3.642
+#endif
+
+#ifdef VIN_R2
+#undef VIN_R2
+#define VIN_R2					2300.0
 #endif
 
 // used by pas, no brake cuttof sorry

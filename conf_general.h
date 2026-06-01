@@ -84,6 +84,7 @@
 //#define APP_CUSTOM_TO_USE			"app_motor_heater.c"
 //#include "er/app_erockit_conf_v2.h"
 //#include "finn/app_finn_az_conf.h"
+#include "ebike/app_ebike.h"
 
 #include "hw.h"
 #include "mcconf_default.h"
