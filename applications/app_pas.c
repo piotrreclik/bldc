@@ -31,32 +31,44 @@
 #include "comm_can.h"
 #include "hw.h"
 #include <math.h>
+#include "terminal.h"
+#include "commands.h"
 
 // Settings
-#define PEDAL_INPUT_TIMEOUT				0.2
 #define MAX_MS_WITHOUT_CADENCE_OR_TORQUE	5000
 #define MAX_MS_WITHOUT_CADENCE			1000
 #define MIN_MS_WITHOUT_POWER			500
-#define FILTER_SAMPLES					5
-#define RPM_FILTER_SAMPLES				8
+#define PULSES_TIME_SAMPLES_COUNT		5
+#define ENGAGEMENT_COUNTER_TIMEOUT_SECONDS 0.5F
+#define ENGAGEMENT_ANGLE 				180.0F
+#define DISENGAGEMENT_ANGLE 			70.0F
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
 __attribute__((section(".ram4"))) static THD_WORKING_AREA(pas_thread_wa, 512);
 
 // Private variables
+static float pedal_rpm_start = 0;
+static int32_t engagement_pulses = 0;
+static int32_t disengagement_pulses = 0;
+static uint32_t rotation_pulses = 0;
 static volatile pas_config config;
 static volatile float sub_scaling = 1.0;
 static volatile float output_current_rel = 0.0;
 static volatile float ms_without_power = 0.0;
-static volatile float max_pulse_period = 0.0;
-static volatile float min_pedal_period = 0.0;
+static volatile float max_inactivity_time = 0.0;
 static volatile float direction_conf = 0.0;
 static volatile float pedal_rpm = 0;
 static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile float torque_ratio = 0.0;
+
+static volatile int32_t pulses_counter = 0;
+static volatile systime_t pulse_time_samples[PULSES_TIME_SAMPLES_COUNT] = {0,0,0,0,0};
+static volatile uint32_t pulse_time_sample_index = 0;
+
+static void read_isr_count(int argc, const char **argv);
 
 /**
  * Configure and initialize PAS application
@@ -69,13 +81,16 @@ void app_pas_configure(pas_config *conf) {
 	ms_without_power = 0.0;
 	output_current_rel = 0.0;
 
-	// a period longer than this should immediately reduce power to zero
-	max_pulse_period = 1.0 / ((config.pedal_rpm_start / 60.0) * config.magnets) * 1.2;
-
-	// if pedal spins at x3 the end rpm, assume its beyond limits
-	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 3.0 / 60.0));
-
 	(config.invert_pedal_direction) ? (direction_conf = -1.0) : (direction_conf = 1.0);
+	rotation_pulses = config.magnets * 4;
+
+  	pedal_rpm_start = (config.pedal_rpm_start < 1 ? 1 : floor(config.pedal_rpm_start));
+	// inactivity longer than this should immediately reduce power to zero
+	max_inactivity_time = 1.0 / ((pedal_rpm_start / 60.0) * config.magnets * 4) * 1.2;
+  	float engagement_multiplier = config.pedal_rpm_start - pedal_rpm_start;
+	int calculated_engagement_pulses = engagement_multiplier * ENGAGEMENT_ANGLE / 360.0 * rotation_pulses;
+	engagement_pulses = calculated_engagement_pulses < 5 ? 5 : calculated_engagement_pulses;
+	disengagement_pulses = DISENGAGEMENT_ANGLE / 360.0 * rotation_pulses;
 }
 
 /**
@@ -86,6 +101,38 @@ void app_pas_configure(pas_config *conf) {
  * false when PAS app shares control with the ADC app for current command
  */
 void app_pas_start(bool is_primary_output) {
+#ifdef HW_PAS1_PORT
+	palSetPadMode(HW_PAS1_PORT, HW_PAS1_PIN, PAL_MODE_INPUT_PULLUP);
+	palSetPadMode(HW_PAS2_PORT, HW_PAS2_PIN, PAL_MODE_INPUT_PULLUP);
+	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+
+	SYSCFG_EXTILineConfig(HW_PAS1_EXTI_PORTSRC, HW_PAS1_EXTI_PINSRC);
+	SYSCFG_EXTILineConfig(HW_PAS2_EXTI_PORTSRC, HW_PAS2_EXTI_PINSRC);
+
+	// Configure EXTI Line
+	EXTI_InitTypeDef EXTI_InitStructure;
+	EXTI_InitStructure.EXTI_Line = HW_PAS1_EXTI_LINE;
+	EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+	EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&EXTI_InitStructure);
+	EXTI_InitTypeDef EXTI_InitStructure2;
+	EXTI_InitStructure2.EXTI_Line = HW_PAS2_EXTI_LINE;
+	EXTI_InitStructure2.EXTI_Mode = EXTI_Mode_Interrupt;
+	EXTI_InitStructure2.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+	EXTI_InitStructure2.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&EXTI_InitStructure2);
+
+	// Enable and set EXTI Line Interrupt to the highest priority
+	nvicEnableVector(EXTI9_5_IRQn, 0);
+
+terminal_register_command_callback(
+			"pas",
+			"pas",
+			0,
+			read_isr_count);
+#endif
 	stop_now = false;
 	chThdCreateStatic(pas_thread_wa, sizeof(pas_thread_wa), NORMALPRIO, pas_thread, NULL);
 
@@ -122,56 +169,126 @@ float app_pas_get_pedal_rpm(void) {
 	return pedal_rpm;
 }
 
-void pas_event_handler(void) {
-#ifdef HW_PAS1_PORT
-	const int8_t QEM[] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
-	int8_t direction_qem;
-	uint8_t new_state;
-	static uint8_t old_state = 0;
-	static float old_timestamp = 0;
-	static float inactivity_time = 0;
-	static float period_filtered = 0;
-	static int32_t correct_direction_counter = 0;
+void pas_pin_isr(void) {
+	const int8_t counter_lut[32] = {
+		//Direction = 0 (backwards)
+        0, // 00 to 00
+       -1, // 00 to 01
+       +1, // 00 to 10
+       -2, // 00 to 11
 
-	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
-	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
+       +1, // 01 to 00
+        0, // 01 to 01
+       -2, // 01 to 10
+       -1, // 01 to 11
 
-	new_state = PAS2_level * 2 + PAS1_level;
-	direction_qem = (float) QEM[old_state * 4 + new_state];
-	old_state = new_state;
+       -1, // 10 to 00
+       -2, // 10 to 01
+        0, // 10 to 10
+       +1, // 10 to 11
 
-	// Require several quadrature events in the right direction to prevent vibrations from
-	// engging PAS
-	int8_t direction = (direction_conf * direction_qem);
-	
-	switch(direction) {
-		case 1: correct_direction_counter++; break;
-		case -1:correct_direction_counter = 0; break;
-	}
+       -2, // 11 to 00
+       +1, // 11 to 01
+       -1, // 11 to 10
+        0, // 11 to 11
 
-	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+		//Direction = 1 (forwards)
+        0, // 00 to 00
+       -1, // 00 to 01
+       +1, // 00 to 10
+       +2, // 00 to 11
 
-	// sensors are poorly placed, so use only one rising edge as reference
-	if( (new_state == 3) && (correct_direction_counter >= 4) ) {
-		float period = (timestamp - old_timestamp) * (float)config.magnets;
-		old_timestamp = timestamp;
+       +1, // 01 to 00
+        0, // 01 to 01
+       +2, // 01 to 10
+       -1, // 01 to 11
 
-		UTILS_LP_FAST(period_filtered, period, 1.0);
+       -1, // 10 to 00
+       +2, // 10 to 01
+        0, // 10 to 10
+       +1, // 10 to 11
 
-		if(period_filtered < min_pedal_period) { //can't be that short, abort
-			return;
+       +2, // 11 to 00
+       +1, // 11 to 01
+       -1, // 11 to 10
+        0, // 11 to 11
+	};
+	static uint8_t lut_index = 16;
+	uint8_t direction_isr = 0;
+    lut_index |= palReadPad(HW_PAS1_PORT, HW_PAS1_PIN)<<1 | palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
+	int8_t lut_value = counter_lut[lut_index];
+    pulses_counter += direction_conf * lut_value;
+
+    if (lut_value != 0) {
+        direction_isr = ((direction_conf * lut_value) > 0) ? 1 : 0;
+		if (direction_isr > 0) {
+			pulse_time_samples[pulse_time_sample_index++ % PULSES_TIME_SAMPLES_COUNT] = chVTGetSystemTimeX();
 		}
-		pedal_rpm = 60.0 / period_filtered;
-		pedal_rpm *= (direction_conf * (float)direction_qem);
-		inactivity_time = 0.0;
-		correct_direction_counter = 0;
-	}
-	else {
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
+    }
+    //Prepare for next iteration by shifting current state
+    //bits to old state bits and also the direction bit
+    lut_index = ((lut_index << 2) & 0b1100) | (direction_isr<<4);
+}
 
-		//if no pedal activity, set RPM as zero
-		if(inactivity_time > max_pulse_period) {
+static void read_isr_count(int argc, const char **argv) {
+	(void)argc; (void)argv;
+	commands_printf("Pulses %d, rpm %f, cranks %d output %f", pulses_counter, (double)pedal_rpm, 
+		pulse_time_sample_index / rotation_pulses / 2, (double) output_current_rel);
+}
+
+float get_rpm(void) {
+	uint32_t pulses_ticks_sum = 0; 
+	for (uint32_t pi = pulse_time_sample_index - 1; pi > pulse_time_sample_index - PULSES_TIME_SAMPLES_COUNT; pi--) {
+		pulses_ticks_sum += pulse_time_samples[pi % PULSES_TIME_SAMPLES_COUNT] - pulse_time_samples[(pi - 1) % PULSES_TIME_SAMPLES_COUNT];
+	}
+	float average_pulse_seconds = (float)(pulses_ticks_sum / (float)(PULSES_TIME_SAMPLES_COUNT - 1)) /(float)CH_CFG_ST_FREQUENCY;
+	return 60.0 / (float)(rotation_pulses * average_pulse_seconds);
+}
+
+void caclulate_pas_rpm(void) {
+#ifdef HW_PAS1_PORT
+	static float inactivity_time = 0;
+	static float engagement_inactivity_time = 0;
+	static int32_t engagement_counter = 0;
+	static int32_t disengagement_counter = 0;
+	static int32_t old_pulses_counter = 0;
+	float tracked_pedal_rpm = 0;
+
+	int32_t counter_diff = pulses_counter - old_pulses_counter;
+	old_pulses_counter = pulses_counter;
+    engagement_counter = engagement_counter + counter_diff > 0 ? engagement_counter + counter_diff : 0;
+	disengagement_counter = disengagement_counter - counter_diff > 0 ? disengagement_counter - counter_diff : 0;
+	if (counter_diff == 0) {
+		engagement_inactivity_time += 1.0 / (float)config.update_rate_hz;
+
+		//if no pedal activity, reset engagement counter
+		if(engagement_inactivity_time > ENGAGEMENT_COUNTER_TIMEOUT_SECONDS) {
+			engagement_counter = 0;
+			disengagement_counter = 0;
+		}
+	} else {
+		engagement_inactivity_time = 0.0;
+	}
+
+	if (counter_diff > 0) {
+		tracked_pedal_rpm = get_rpm();
+	}
+	
+	if ((pedal_rpm > pedal_rpm_start && engagement_counter > 1)
+		|| (tracked_pedal_rpm > pedal_rpm_start && engagement_counter > engagement_pulses)) {
+		UTILS_LP_FAST(pedal_rpm, tracked_pedal_rpm, pedal_rpm > pedal_rpm_start ? 0.6 : 1.0);
+		engagement_counter = 0;
+		inactivity_time = 0;
+	} else {
+		inactivity_time += 1.0 / (float)config.update_rate_hz;
+		//if no engagement pedal activity, set RPM as zero
+		if(inactivity_time > max_inactivity_time) {
 			pedal_rpm = 0.0;
+		}
+		if (disengagement_counter > disengagement_pulses) {
+			pedal_rpm = 0.0;
+			disengagement_counter = 0;
+			app_custom_release_motor();
 		}
 	}
 #endif
@@ -205,15 +322,11 @@ static THD_FUNCTION(pas_thread, arg) {
 			return;
 		}
 
-		pas_event_handler();	// this could happen inside an ISR instead of being polled
+		caclulate_pas_rpm();
 
 		// For safe start when fault codes occur
 		if (mc_interface_get_fault() != FAULT_CODE_NONE) {
 			ms_without_power = 0;
-		}
-
-		if (app_is_output_disabled()) {
-			continue;
 		}
 
 		switch (config.ctrl_type) {
@@ -225,9 +338,12 @@ static THD_FUNCTION(pas_thread, arg) {
 
 				// NOTE: If the limits are the same a numerical instability is approached, so in that case
 				// just use on/off control (which is what setting the limits to the same value essentially means).
-				if (config.pedal_rpm_end > (config.pedal_rpm_start + 1.0)) {
-					output = utils_map(pedal_rpm, config.pedal_rpm_start, config.pedal_rpm_end, 0.0, config.current_scaling * sub_scaling);
-					utils_truncate_number(&output, 0.0, config.current_scaling * sub_scaling);
+				if (config.pedal_rpm_end > (pedal_rpm_start + 1.0)) {
+					float total_current_scaling = config.current_scaling * sub_scaling;
+					output = pedal_rpm > pedal_rpm_start ? 
+						utils_map(pedal_rpm, pedal_rpm_start, config.pedal_rpm_end, total_current_scaling / 1.5, total_current_scaling) : 
+						0.0;
+					utils_truncate_number(&output, 0.0, total_current_scaling);
 				} else {
 					if (pedal_rpm > config.pedal_rpm_end) {
 						output = config.current_scaling * sub_scaling;
@@ -308,6 +424,9 @@ static THD_FUNCTION(pas_thread, arg) {
 		timeout_reset();
 
 		if (primary_output == true) {
+			if (app_is_output_disabled()) {
+				continue;
+			}
 			mc_interface_set_current_rel(output);
 		}
 		else {

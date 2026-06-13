@@ -1,0 +1,10 @@
+--- RE-CONTEXT EMBEDDING FOR VESC CUSTOM APP CONTROLLER ---
+- Hardware: Bafang BBSHD mid-drive motor (Internal reduction ~21.9:1, 8 poles / 4 pole pairs).
+- Configuration: 42T front chainring, 11-51T rear cassette (Clamped gear ratios: Min 5.73f, Max 26.59f). Max mechanical RPM: 4500.
+- Telemetry Sensors: 1-magnet wheel speed sensor (slow refresh rate at low speeds). Dynamic data fetched natively via `mc_interface_get_speed()` and `mc_interface_get_rpm()`. Wheel size fetched from `si_wheel_diameter`.
+- Architecture: Custom background VESC app thread executing at 100Hz (DT = 0.01s).
+- Algorithm Style: Open-loop physics translation (Linear speed -> Wheel RPM -> Motor ERPM via estimated gear ratio). No external speed PID to avoid nested loop oscillations with VESC internal ERPM loop.
+- Filter Implementation: Symmetrical EMA gear ratio filter (Alpha 0.05). Modified with a dual-mode asymmetric mirror using a 6 km/h (1.67 m/s) velocity inversion boundary:
+  * Below 6 km/h: Slower, dampened power ramp-up (Alpha 0.01) to mask sensor lag, but rapid ERPM dump on overshoot (Alpha 0.25).
+  * Above 6 km/h: Fast, crisp throttle power tracking (Alpha 0.25), but ultra-smooth torque decay on overshoot (Alpha 0.01).
+- Safety Systems: Active hardware watchdog monitoring `current_erpm > 500` against `speed < 0.1 m/s` for 2 seconds to detect speed sensor failure, tripping a `-1.0f` shutdown state.
