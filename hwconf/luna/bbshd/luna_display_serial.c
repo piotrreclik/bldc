@@ -21,6 +21,7 @@
 #include "hw.h"
 #include "luna_display_serial.h"
 #include "app.h"
+#include "ebike/app_ebike.h"
 #include "ch.h"
 #include "hal.h"
 #include "packet.h"
@@ -42,6 +43,7 @@
 #define CMD_AMPS			0x0A
 #define CMD_WHEEL_RPM		0x20
 #define CMD_MOVING			0x31
+#define CMD_LIGHT			0x1A
 #define CMD_LIGHT_ON		0xF1
 #define CMD_LIGHT_OFF		0xF0
 #define CMD_PEDAL_MOV		0x08
@@ -110,15 +112,27 @@ typedef struct {
 } controller_info_t;
 
 typedef struct {
-	unsigned int rd_ptr;
-	unsigned int wr_ptr;
-	unsigned char data[LUNA_SERIAL_BUFFER_SIZE];
+    unsigned char buffer[LUNA_SERIAL_BUFFER_SIZE];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+} circular_buffer_t;
+
+typedef struct {
+	//unsigned int rd_ptr;
+	//unsigned int wr_ptr;
+	//unsigned char data[LUNA_SERIAL_BUFFER_SIZE];
+	circular_buffer_t circular_buffer;
 	unsigned char tx[LUNA_TX_SERIAL_BUFFER_SIZE];
 } luna_serial_buffer_t;
 
 static volatile LUNA_PAS_LEVEL pas_level = PAS_LEVEL_1;
+static volatile EBIKE_MODE_T ebike_mode = EBIKE_MODE_COMPLIANT;
+static volatile EBIKE_MODE_T last_ebike_mode = EBIKE_MODE_COMPLIANT;
 static volatile bool display_thread_is_running = false;
 static volatile bool display_uart_is_running = false;
+static volatile bool ebike_configure_mode = false;
+static volatile bool show_temp = false;
 
 /* UART driver configuration structure */
 static SerialConfig uart_cfg = {
@@ -143,6 +157,71 @@ static void serial_send_packet(unsigned char *data, unsigned int len);
 static void serial_display_byte_process(unsigned char byte);
 static void serial_display_check_rx(void);
 
+void init_buffer(circular_buffer_t *cb) {
+    cb->head = 0;
+    cb->tail = 0;
+    cb->count = 0;
+}
+
+bool buffer_push(circular_buffer_t *cb, unsigned char data) {
+    if (cb->count == LUNA_SERIAL_BUFFER_SIZE) {
+        return false;  // Buffer Full
+    }
+
+    cb->buffer[cb->head] = data;
+    cb->head = (cb->head + 1) % LUNA_SERIAL_BUFFER_SIZE;
+    cb->count++;
+    return true;
+}
+
+bool buffer_pop(circular_buffer_t *cb, unsigned char *data) {
+    if (cb->count == 0) {
+        return false;  // Buffer Empty
+    }
+
+    *data = cb->buffer[cb->tail];
+    cb->tail = (cb->tail + 1) % LUNA_SERIAL_BUFFER_SIZE;
+    cb->count--;
+    return true;
+}
+
+bool buffer_mark_read(circular_buffer_t *cb, uint8_t len) {
+    if (cb->count < len) {
+        return false;  // Buffer Empty
+    }
+    cb->tail = (cb->tail + len) % LUNA_SERIAL_BUFFER_SIZE;
+    cb->count -= len;
+    return true;
+}
+
+bool buffer_peek_tail(circular_buffer_t *cb, unsigned char *data) {
+    if (cb->count == 0) return false;
+    *data = cb->buffer[cb->tail];
+    return true;
+}
+
+bool buffer_peek(circular_buffer_t *cb, unsigned char *data, uint8_t offset) {
+    if (cb->count < offset) return false;
+    *data = cb->buffer[(cb->tail + offset) % LUNA_SERIAL_BUFFER_SIZE];
+    return true;
+}
+
+bool buffer_is_full(circular_buffer_t *cb) {
+    return cb->count == LUNA_SERIAL_BUFFER_SIZE;
+}
+
+bool buffer_is_empty(circular_buffer_t *cb) {
+    return cb->count == 0;
+}
+
+uint8_t buffer_checksum(circular_buffer_t *cb, uint8_t len) {
+	uint8_t sum = 0;
+	for(int i = cb->tail; i<(len + cb->tail); i++) {
+		sum += cb->buffer[i % LUNA_SERIAL_BUFFER_SIZE];
+	}
+	return sum;
+}
+
 void luna_display_serial_start(int8_t initial_level) {
     pas_level = translate_assist_level(initial_level);
 
@@ -151,8 +230,9 @@ void luna_display_serial_start(int8_t initial_level) {
 				NORMALPRIO, display_process_thread, NULL);
 		display_thread_is_running = true;
 	}
-	serial_buffer.rd_ptr = 0;
-	serial_buffer.wr_ptr = 0;
+	//serial_buffer.rd_ptr = 0;
+	//serial_buffer.wr_ptr = 0;
+	init_buffer(&serial_buffer.circular_buffer);
 
 	sdStart(&HW_UART_DEV, &uart_cfg);
 	palSetPadMode(HW_UART_TX_PORT, HW_UART_TX_PIN, PAL_MODE_ALTERNATE(HW_UART_GPIO_AF) |
@@ -208,6 +288,37 @@ static bool check_assist_level(uint8_t assist_code) {
 	return ret;
 }
 
+EBIKE_MODE_T assist_code_to_ebike_mode(uint8_t assist_code) {
+	switch (assist_code) {
+		case PAS_LEVEL_1:
+		case PAS_LEVEL_2: 
+			return EBIKE_MODE_CLASS1;
+		case PAS_LEVEL_3:
+		case PAS_LEVEL_4: 
+			return EBIKE_MODE_CLASS2;
+		case PAS_LEVEL_5:
+		case PAS_LEVEL_6: 
+			return EBIKE_MODE_CLASS3;
+		case PAS_LEVEL_7:
+		case PAS_LEVEL_8:
+			return EBIKE_MODE_UNRESTRICTED;
+		case PAS_LEVEL_9: 
+			return EBIKE_MODE_UNRESTRICTED_PLUS;
+		default: return EBIKE_MODE_COMPLIANT;
+	}
+}
+
+void setup_ebike_mode(uint8_t assist_code) {
+	if (assist_code == PAS_LEVEL_WALK) {
+		app_ebike_set_mode(ebike_mode);
+		if (last_ebike_mode == ebike_mode) {
+			show_temp = !show_temp; 
+		}
+		last_ebike_mode = ebike_mode;
+		ebike_mode = EBIKE_MODE_COMPLIANT;
+	}
+}
+
 /*
  * Sets the PAS current according to the assist code
  *
@@ -220,12 +331,12 @@ static void set_assist_level(uint8_t assist_code) {
 		case PAS_LEVEL_0: current_scale = 0.0; break;
 		case PAS_LEVEL_1: current_scale = 1.0 / 9.0; break;
 		case PAS_LEVEL_2: current_scale = 2.0 / 9.0; break;
-		case PAS_LEVEL_3: current_scale = 3.0 / 9.0; break;
-		case PAS_LEVEL_4: current_scale = 4.0 / 9.0; break;
-		case PAS_LEVEL_5: current_scale = 5.0 / 9.0; break;
-		case PAS_LEVEL_6: current_scale = 6.0 / 9.0; break;
-		case PAS_LEVEL_7: current_scale = 7.0 / 9.0; break;
-		case PAS_LEVEL_8: current_scale = 8.0 / 9.0; break;
+		case PAS_LEVEL_3: current_scale = 2.9 / 9.0; break;
+		case PAS_LEVEL_4: current_scale = 3.8 / 9.0; break;
+		case PAS_LEVEL_5: current_scale = 4.7 / 9.0; break;
+		case PAS_LEVEL_6: current_scale = 5.6 / 9.0; break;
+		case PAS_LEVEL_7: current_scale = 6.5 / 9.0; break;
+		case PAS_LEVEL_8: current_scale = 7.47 / 9.0; break;
 		case PAS_LEVEL_9: current_scale = 1.0; break;
 		default: return;
 	}
@@ -259,107 +370,113 @@ static void serial_send_packet(unsigned char *data, unsigned int len) {
 
 static void serial_display_byte_process(unsigned char byte) {
 	//append new byte to the buffer.
-	serial_buffer.data[serial_buffer.wr_ptr] = byte;
-	serial_buffer.wr_ptr++;
+	buffer_push(&serial_buffer.circular_buffer, byte);
+	//serial_buffer.wr_ptr++;
 
-	uint8_t rd_ptr = serial_buffer.rd_ptr;	//read pointer to try at different start addresses
+	//uint8_t rd_ptr = 0;  = serial_buffer.rd_ptr;	//read pointer to try at different start addresses
 	
 	// process with at least 2 bytes available to read
-	while( (serial_buffer.wr_ptr - rd_ptr ) > 1) {
-
-		if(serial_buffer.data[rd_ptr] == CMD_WRITE) {
+	if(serial_buffer.circular_buffer.count  > 1) {
+		uint8_t main_command;
+		buffer_peek_tail(&serial_buffer.circular_buffer, &main_command);
+		if(main_command == CMD_WRITE) {
 			// start byte found
-			uint8_t command = serial_buffer.data[rd_ptr + 1];
-			uint8_t checksum_addr;
+			uint8_t command; // = serial_buffer.data[rd_ptr + 1];
+			buffer_peek(&serial_buffer.circular_buffer, &command, 1);
+			uint8_t checksum;
+			uint8_t light_command;
 
 			switch (command) {
 				case CMD_PAS_LEVEL:
-					if ( (serial_buffer.wr_ptr - rd_ptr) < 4 ) {	//this packet needs 4 bytes
+					if (serial_buffer.circular_buffer.count < 4 ) {	//this packet needs 4 bytes
 						break;
 					}
-					checksum_addr = rd_ptr + 3;
-					if(checksum_addr <= serial_buffer.wr_ptr) {	//check the checksum has been received
-						// check sum
-						if( serial_buffer.data[checksum_addr] ==
-							checksum(serial_buffer.data + rd_ptr, 3) ) {
-
-							if(check_assist_level(serial_buffer.data[rd_ptr + 2])){
-								pas_level = serial_buffer.data[rd_ptr + 2];
-								set_assist_level(pas_level);
-							}
-							serial_buffer.rd_ptr = rd_ptr + 4;	//mark bytes as read
+					//checksum_addr = rd_ptr + 3;
+					buffer_peek(&serial_buffer.circular_buffer, &checksum, 3);
+					// check sum
+					if( checksum == buffer_checksum(&serial_buffer.circular_buffer, 3) ) {
+						uint8_t assist_code;
+						buffer_peek(&serial_buffer.circular_buffer, &assist_code, 2);
+						if(check_assist_level(assist_code)){
+							pas_level = assist_code;
+							set_assist_level(pas_level);
 						}
+						setup_ebike_mode(assist_code);
 					}
+					buffer_mark_read(&serial_buffer.circular_buffer, 4); //mark bytes as read
 					break;
 				case CMD_WRITE_BASIC:
 					commands_printf("CMD_WRITE_BASIC");
 
-					if ( (serial_buffer.wr_ptr - rd_ptr) < CMD_WRITE_BASIC_LENGTH ) {	//this packet needs 26 bytes
+					if (serial_buffer.circular_buffer.count < CMD_WRITE_BASIC_LENGTH) {	//this packet needs 26 bytes
 						break;
 					}
 
-					checksum_addr = rd_ptr + CMD_WRITE_BASIC_LENGTH - 1;
+					//checksum_addr = rd_ptr + CMD_WRITE_BASIC_LENGTH - 1;
 
-					if(checksum_addr <= serial_buffer.wr_ptr) {	//check the checksum has been received
-						commands_printf("checksum received,calculated: %d    %d",serial_buffer.data[checksum_addr],
-                        		checksum(serial_buffer.data + rd_ptr, CMD_WRITE_BASIC_LENGTH - 1));
+					//if(checksum_addr <= serial_buffer.wr_ptr) {	//check the checksum has been received
+						//commands_printf("checksum received,calculated: %d    %d",serial_buffer.data[checksum_addr],
+                        		//checksum(serial_buffer.data + rd_ptr, CMD_WRITE_BASIC_LENGTH - 1));
 						// check sum
-						if( serial_buffer.data[checksum_addr] ==
-							checksum(serial_buffer.data + rd_ptr, CMD_WRITE_BASIC_LENGTH - 1) ) {
+						//if( serial_buffer.data[checksum_addr] ==
+							//checksum(serial_buffer.data + rd_ptr, CMD_WRITE_BASIC_LENGTH - 1) ) {
 
-							volatile mc_configuration *mcconf = (volatile mc_configuration*) mc_interface_get_configuration();
+							//volatile mc_configuration *mcconf = (volatile mc_configuration*) mc_interface_get_configuration();
 
-							mcconf->l_min_vin = (float) serial_buffer.data[rd_ptr + 2];
-							mcconf->l_current_max = (float) serial_buffer.data[rd_ptr + 3];
+							//mcconf->l_min_vin = (float) serial_buffer.data[rd_ptr + 2];
+							//mcconf->l_current_max = (float) serial_buffer.data[rd_ptr + 3];
 							//skipping assist table for now
-							mcconf->si_wheel_diameter = (float)serial_buffer.data[rd_ptr + 24] * 25.4 / 2.0;
+							//mcconf->si_wheel_diameter = (float)serial_buffer.data[rd_ptr + 24] * 25.4 / 2.0;
 
 							//write settings to flash memory as motor_0
-							conf_general_store_mc_configuration((mc_configuration*)mcconf, false);
+							//conf_general_store_mc_configuration((mc_configuration*)mcconf, false);
 
-							for(int i = 0; i<=CMD_WRITE_BASIC_LENGTH;i++) {
-								commands_printf("%02x ", serial_buffer.data[rd_ptr + i]);
-							}
+							//for(int i = 0; i<=CMD_WRITE_BASIC_LENGTH;i++) {
+								//commands_printf("%02x ", serial_buffer.data[rd_ptr + i]);
+							//}
                             
-							serial_buffer.rd_ptr = rd_ptr + CMD_WRITE_BASIC_LENGTH;	//mark bytes as read
+							buffer_mark_read(&serial_buffer.circular_buffer, CMD_WRITE_BASIC_LENGTH);	//mark bytes as read
 
 							serial_buffer.tx[0] = CMD_WRITE_BASIC;
 							serial_buffer.tx[1] = CMD_WRITE_BASIC_SUCCESS;
 							serial_send_packet(serial_buffer.tx, 2);
-						}
-					}
+						//}
+					//}
 					break;
-/*				case CMD_LIGHT_ON:
-					// TODO: turn ON the light
-					buffer.tx[0] = 0x01;
-					serial_send_packet(buffer.tx, 1);
-					rd_ptr +=2;
-					buffer.rd_ptr = rd_ptr;
-					continue;
-				case CMD_LIGHT_OFF:
-					// TODO: turn OFF the light
-					buffer.tx[0] = 0x01;
-					serial_send_packet(buffer.tx, 1);
-					rd_ptr +=2;
-					buffer.rd_ptr = rd_ptr;
-					continue; */
+				case CMD_LIGHT:
+					if (serial_buffer.circular_buffer.count < 3 ) {	//this packet needs 3 bytes
+						break;
+					}
+					//light_command = serial_buffer.data[rd_ptr + 2];
+					buffer_peek(&serial_buffer.circular_buffer, &light_command, 2);
+					if (light_command == CMD_LIGHT_ON) {
+						ebike_configure_mode = true;
+						//serial_buffer.rd_ptr = rd_ptr + 3;
+					} else if (light_command == CMD_LIGHT_OFF) {
+						if (ebike_configure_mode) {
+							ebike_configure_mode = false;	
+							ebike_mode = assist_code_to_ebike_mode(pas_level);
+						}
+						//serial_buffer.rd_ptr = rd_ptr + 3;
+					} 
+					buffer_mark_read(&serial_buffer.circular_buffer, 3);
+					break;
 				default:
-					++rd_ptr;
-					serial_buffer.rd_ptr = rd_ptr;	//discard the CMD_WRITE byte as it wasn't followed by a supported command
-					continue;
+					//++rd_ptr;
+					//serial_buffer.rd_ptr = rd_ptr;	//discard the CMD_WRITE byte as it wasn't followed by a supported command
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 			}
-		}
-
-		if(serial_buffer.data[rd_ptr] == CMD_READ) {
+		} else if(main_command == CMD_READ) {
 			// start byte found
-			uint8_t command = serial_buffer.data[rd_ptr + 1];
+			uint8_t command;// = serial_buffer.data[rd_ptr + 1];
+			buffer_peek(&serial_buffer.circular_buffer, &command, 1);
 
 			switch (command) {
 				case CMD_VERSION:
 					serial_send_packet((uint8_t*)&controller_info, sizeof(controller_info_t));
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;	//mark bytes as read
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);	//mark bytes as read
+					break;
 				case CMD_READ_BASIC:
 					{
 					commands_printf("CMD_READ_BASIC");
@@ -398,9 +515,8 @@ static void serial_display_byte_process(unsigned char byte) {
 						commands_printf("%02x ", serial_buffer.tx[i]);
 					}
 					serial_send_packet(serial_buffer.tx, CMD_READ_BASIC_LENGTH);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 					}
 				case CMD_AMPS:
 					{
@@ -409,25 +525,39 @@ static void serial_display_byte_process(unsigned char byte) {
 					serial_buffer.tx[0] = (uint8_t) (current);
 					serial_buffer.tx[1] = serial_buffer.tx[0];
 					serial_send_packet(serial_buffer.tx, 2);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;	//mark bytes as read
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 					}
 				case CMD_WHEEL_RPM:
 					{
 #ifdef HW_HAS_WHEEL_SPEED_SENSOR
-					// rpm = spd [m/s] / perim [m] * 60[s/min]
-					const volatile mc_configuration *conf = mc_interface_get_configuration();
-					uint16_t wheel_rpm = (uint16_t)(mc_interface_get_speed() / (M_PI * conf->si_wheel_diameter) * 60.0);
+					if (show_temp) {
+						const volatile mc_configuration *mcconf = mc_interface_get_configuration();
+    					float d_meters = mcconf->si_wheel_diameter;
+    					if (d_meters < 0.01f) {
+        					d_meters = 0.6985f;
+    					}
+						float temp_c = mc_interface_temp_motor_filtered();
+						// convert temp to rpm
+						float divider = (float)M_PI * 0.06f * d_meters;
+    					uint16_t temp_as_rpm = (uint16_t)(temp_c / divider);
+						serial_buffer.tx[0] = (uint8_t)((temp_as_rpm >> 8) & 0xFF);
+						serial_buffer.tx[1] = (uint8_t)(temp_as_rpm & 0xFF);
+						serial_buffer.tx[2] = serial_buffer.tx[0] + serial_buffer.tx[1] + 32;
+						
+					} else { 
+						// rpm = spd [m/s] / perim [m] * 60[s/min]
+						const volatile mc_configuration *conf = mc_interface_get_configuration();
+						uint16_t wheel_rpm = (uint16_t)(mc_interface_get_speed() / (M_PI * conf->si_wheel_diameter) * 60.0);
 
-					serial_buffer.tx[0] = (uint8_t)(wheel_rpm / 256);
-					serial_buffer.tx[1] = (uint8_t)(wheel_rpm & 0xFFFF);
-					serial_buffer.tx[2] = serial_buffer.tx[0] + serial_buffer.tx[1] + 32;
+						serial_buffer.tx[0] = (uint8_t)((wheel_rpm >> 8) & 0xFF);
+						serial_buffer.tx[1] = (uint8_t)(wheel_rpm & 0xFF);
+						serial_buffer.tx[2] = serial_buffer.tx[0] + serial_buffer.tx[1] + 32;
+					}	
 					serial_send_packet(serial_buffer.tx, 3);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;              
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);         
 #endif
-					continue;
+					break;
 					}
 				case CMD_MOVING:
 					if( mc_interface_get_speed() > 0.0) {
@@ -439,16 +569,14 @@ static void serial_display_byte_process(unsigned char byte) {
 						serial_buffer.tx[1] = 0x30;
 					}
 					serial_send_packet(serial_buffer.tx, 2);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 				case CMD_PEDAL_MOV:
 					// TODO: return pedal activity. 0: no activity
 					serial_buffer.tx[0] = 0x01;
 					serial_send_packet(serial_buffer.tx, 1);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 				case CMD_BATT_SOC:
 					// Battery state of charge 0-100%.
 					{
@@ -459,9 +587,8 @@ static void serial_display_byte_process(unsigned char byte) {
 					serial_buffer.tx[0] = (uint8_t) battery_level;
 					serial_buffer.tx[1] = (uint8_t) battery_level;
 					serial_send_packet(serial_buffer.tx, 2);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 					}
 				case CMD_BATT_VOLTAGE:
 					{
@@ -471,28 +598,31 @@ static void serial_display_byte_process(unsigned char byte) {
 					serial_buffer.tx[1] = (uint8_t)(batt_voltage & 0xFFFF);
 					serial_buffer.tx[2] = serial_buffer.tx[0] + serial_buffer.tx[1] + 0x12;
 					serial_send_packet(serial_buffer.tx, 3);
-					rd_ptr +=2;
-					serial_buffer.rd_ptr = rd_ptr;              
-					continue;
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);           
+					break;
 					}
 				default:
-					++rd_ptr;
-					serial_buffer.rd_ptr = rd_ptr;	//discard the CMD_READ byte as it wasn't followed by a supported command
-					continue;
+					//++rd_ptr;
+					//serial_buffer.rd_ptr = rd_ptr;	//discard the CMD_READ byte as it wasn't followed by a supported command
+					buffer_mark_read(&serial_buffer.circular_buffer, 2);
+					break;
 			}
+		} else {
+		//rd_ptr++;
+			buffer_mark_read(&serial_buffer.circular_buffer, 1);
 		}
-		rd_ptr++;
 	}
 
-	if(serial_buffer.rd_ptr > 0) {
-		memmove(serial_buffer.data, serial_buffer.data + serial_buffer.rd_ptr, LUNA_SERIAL_BUFFER_SIZE - serial_buffer.rd_ptr);
-		serial_buffer.wr_ptr -= serial_buffer.rd_ptr;
-		serial_buffer.rd_ptr = 0;
-	}
-	if(serial_buffer.wr_ptr == (LUNA_SERIAL_BUFFER_SIZE - 1) ) {
+	//if(serial_buffer.rd_ptr > 0) {
+		//memmove(serial_buffer.data, serial_buffer.data + serial_buffer.rd_ptr, LUNA_SERIAL_BUFFER_SIZE - serial_buffer.rd_ptr);
+		//serial_buffer.wr_ptr -= serial_buffer.rd_ptr;
+		//serial_buffer.rd_ptr = 0;
+	//}
+	if(buffer_is_full(&serial_buffer.circular_buffer)) {
 		//shift buffer to the left discarding the oldest byte
-		memmove(serial_buffer.data,serial_buffer.data + 1, LUNA_SERIAL_BUFFER_SIZE - 1);
-		serial_buffer.wr_ptr -= 1;
+		//memmove(serial_buffer.data,serial_buffer.data + 1, LUNA_SERIAL_BUFFER_SIZE - 1);
+		//serial_buffer.wr_ptr -= 1;
+		buffer_mark_read(&serial_buffer.circular_buffer, 1);
 	}
 }
 

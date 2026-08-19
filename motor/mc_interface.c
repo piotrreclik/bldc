@@ -2416,8 +2416,9 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 
 	// RPM max
 	float lo_max_rpm = 0.0;
-	const float rpm_pos_cut_start = conf->l_max_erpm * conf->l_erpm_start;
-	const float rpm_pos_cut_end = conf->l_max_erpm;
+	const float effective_max_erpm = utils_min_abs(conf->l_max_erpm, app_custom_max_erpm());
+	const float rpm_pos_cut_start = effective_max_erpm * conf->l_erpm_start;
+	const float rpm_pos_cut_end = effective_max_erpm;
 	if (rpm_now < (rpm_pos_cut_start + 0.1)) {
 		lo_max_rpm = l_current_max_tmp;
 	} else if (rpm_now > (rpm_pos_cut_end - 0.1)) {
@@ -2471,12 +2472,12 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 	// Battery cutoff
 	float lo_in_max_batt = 0.0;
 	if (v_in > (conf->l_battery_cut_start - 0.1)) {
-		lo_in_max_batt = conf->l_in_current_max;
+		lo_in_max_batt = conf->l_in_current_max * conf->l_current_max_scale;
 	} else if (v_in < (conf->l_battery_cut_end + 0.1)) {
 		lo_in_max_batt = 0.0;
 	} else {
 		lo_in_max_batt = utils_map(v_in, conf->l_battery_cut_start,
-				conf->l_battery_cut_end, conf->l_in_current_max, 0.0);
+				conf->l_battery_cut_end, conf->l_in_current_max * conf->l_current_max_scale, 0.0);
 	}
 
 	// Regen overvoltage cutoff
@@ -2491,7 +2492,7 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 	}
 
 	// Wattage limits
-	const float lo_in_max_watt = conf->l_watt_max / v_in;
+	const float lo_in_max_watt = (conf->l_watt_max * conf->l_current_max_scale) / v_in;
 	const float lo_in_min_watt = conf->l_watt_min / v_in;
 
 	float lo_in_max = utils_min_abs(lo_in_max_watt, lo_in_max_batt);
