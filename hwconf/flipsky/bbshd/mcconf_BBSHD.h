@@ -16,10 +16,10 @@
 #define MCCONF_SENSOR_MODE 0
 
 // Motor Current Max
-#define MCCONF_L_CURRENT_MAX 80.00
+#define MCCONF_L_CURRENT_MAX 80
 
 // Motor Current Max Brake
-#define MCCONF_L_CURRENT_MIN -20.00
+#define MCCONF_L_CURRENT_MIN -20
 
 // Battery Current Max
 #define MCCONF_L_IN_CURRENT_MAX 60
@@ -34,13 +34,13 @@
 #define MCCONF_L_IN_CURRENT_MAP_FILTER 0.005
 
 // Absolute Maximum Current
-#define MCCONF_L_MAX_ABS_CURRENT 150.0
+#define MCCONF_L_MAX_ABS_CURRENT 150
 
 // Max ERPM Reverse
 #define MCCONF_L_RPM_MIN -4200
 
 // ERPM Limit Start
-#define MCCONF_L_RPM_START 0.80
+#define MCCONF_L_RPM_START 0.8
 
 // Max ERPM Full Brake
 #define MCCONF_L_CURR_MAX_RPM_FBRAKE 500
@@ -85,13 +85,13 @@
 #define MCCONF_L_MAX_DUTY 0.95
 
 // Maximum Wattage
-#define MCCONF_L_WATT_MAX 4500
+#define MCCONF_L_WATT_MAX 4000
 
 // Maximum Braking Wattage
 #define MCCONF_L_WATT_MIN -1000
 
 // Max Current Scale
-#define MCCONF_L_CURRENT_MAX_SCALE 0.99
+#define MCCONF_L_CURRENT_MAX_SCALE 1
 
 // Min Current Scale
 #define MCCONF_L_CURRENT_MIN_SCALE 1
@@ -151,10 +151,10 @@
 #define MCCONF_HALL_ERPM 2000
 
 // Current KP
-#define MCCONF_FOC_CURRENT_KP 0.2106
+#define MCCONF_FOC_CURRENT_KP 0.1377
 
 // Current KI
-#define MCCONF_FOC_CURRENT_KI 39.00
+#define MCCONF_FOC_CURRENT_KI 8
 
 // Zero Vector Frequency
 #define MCCONF_FOC_F_ZV 27500
@@ -181,16 +181,16 @@
 #define MCCONF_FOC_PLL_KI 30000
 
 // Motor Inductance (L)
-#define MCCONF_FOC_MOTOR_L 0.00021062
+#define MCCONF_FOC_MOTOR_L 0.000223458
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000085
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000091
 
 // Motor Resistance (R)
-#define MCCONF_FOC_MOTOR_R 0.041
+#define MCCONF_FOC_MOTOR_R 0.044
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01877
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01933
 
 // Observer Gain (x1M)
 #define MCCONF_FOC_OBSERVER_GAIN 770000
@@ -232,7 +232,7 @@
 #define MCCONF_FOC_SL_OPENLOOP_TIME 0.1
 
 // Openloop Current Boost
-#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 0
+#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 1
 
 // Openloop Current Max
 #define MCCONF_FOC_SL_OPENLOOP_MAX_Q -1
@@ -244,13 +244,13 @@
 #define MCCONF_FOC_HALL_TAB_1 100
 
 // Hall Table [2]
-#define MCCONF_FOC_HALL_TAB_2 34
+#define MCCONF_FOC_HALL_TAB_2 33
 
 // Hall Table [3]
-#define MCCONF_FOC_HALL_TAB_3 69
+#define MCCONF_FOC_HALL_TAB_3 67
 
 // Hall Table [4]
-#define MCCONF_FOC_HALL_TAB_4 168
+#define MCCONF_FOC_HALL_TAB_4 167
 
 // Hall Table [5]
 #define MCCONF_FOC_HALL_TAB_5 133
@@ -262,13 +262,13 @@
 #define MCCONF_FOC_HALL_TAB_7 255
 
 // Hall Interpolation ERPM
-#define MCCONF_FOC_HALL_INTERP_ERPM 500
+#define MCCONF_FOC_HALL_INTERP_ERPM 300
 
 // Sensored ERPM Start
-#define MCCONF_FOC_SL_ERPM_START 1500
+#define MCCONF_FOC_SL_ERPM_START 800
 
 // Sensorless ERPM
-#define MCCONF_FOC_SL_ERPM 2000
+#define MCCONF_FOC_SL_ERPM 1500
 
 // Control Sample Mode
 #define MCCONF_FOC_CONTROL_SAMPLE_MODE 0
@@ -382,7 +382,7 @@
 #define MCCONF_FOC_MTPA_MODE 1
 
 // Field Weakening Duty Start
-#define MCCONF_FOC_FW_DUTY_START 0.85
+#define MCCONF_FOC_FW_DUTY_START 0.9
 
 // Field Weakening Ramp Time
 #define MCCONF_FOC_FW_RAMP_TIME 0.3
@@ -538,7 +538,7 @@
 #define MCCONF_M_NTCX_PTCX_BASE_TEMP 25
 
 // Hall Sensor Extra Samples
-#define MCCONF_M_HALL_EXTRA_SAMPLES 2
+#define MCCONF_M_HALL_EXTRA_SAMPLES 3
 
 // Battery Filter Constant
 #define MCCONF_M_BATT_FILTER_CONST 45

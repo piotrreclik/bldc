@@ -706,7 +706,9 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 }
 
 void foc_run_fw(motor_all_state_t *motor, float dt) {
-	if (motor->m_conf->foc_fw_current_max < fmaxf(motor->m_conf->cc_min_current, 0.001)) {
+	// Dynamically calculate the scaled maximum field weakening current
+	float scaled_fw_max = motor->m_conf->foc_fw_current_max * motor->m_max_current_scale;
+	if (scaled_fw_max < fmaxf(motor->m_conf->cc_min_current, 0.001)) {
 		return;
 	}
 
@@ -726,8 +728,7 @@ void foc_run_fw(motor_all_state_t *motor, float dt) {
 		float duty_abs = motor->m_duty_abs_filtered;
 
 		if (conf->foc_fw_duty_start < 0.99 && duty_abs > conf->foc_fw_duty_start * conf->l_max_duty) {
-
-			float i_fw_max = conf->foc_fw_current_max;
+			float i_fw_max = scaled_fw_max;
 
 			// When more field weakening than is possible to achieve is requested the current controller will
 			// place almost all voltage in vd. When that happens we can enter a runaway condition where the iq
@@ -758,7 +759,7 @@ void foc_run_fw(motor_all_state_t *motor, float dt) {
 			motor->m_i_fw_set = fw_current_now;
 		} else {
 			utils_step_towards((float*)&motor->m_i_fw_set, fw_current_now,
-					(dt / motor->m_conf->foc_fw_ramp_time) * motor->m_conf->foc_fw_current_max);
+					(dt / motor->m_conf->foc_fw_ramp_time) * scaled_fw_max);
 		}
 	}
 }
