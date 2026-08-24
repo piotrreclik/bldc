@@ -707,7 +707,7 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 
 void foc_run_fw(motor_all_state_t *motor, float dt) {
 	// Dynamically calculate the scaled maximum field weakening current
-	float scaled_fw_max = motor->m_conf->foc_fw_current_max * motor->m_max_current_scale;
+	float scaled_fw_max = motor->m_conf->foc_fw_current_max * motor->m_conf->l_current_max_scale;
 	if (scaled_fw_max < fmaxf(motor->m_conf->cc_min_current, 0.001)) {
 		return;
 	}
