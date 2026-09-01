@@ -4,7 +4,7 @@
 #define MCCONF_BBSHD_72V_H_
 
 // Field Weakening Current Max
-#define MCCONF_FOC_FW_CURRENT_MAX 28
+#define MCCONF_FOC_FW_CURRENT_MAX 30
 
 // Battery Cells Series
 #define MCCONF_SI_BATTERY_CELLS 20

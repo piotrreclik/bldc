@@ -334,41 +334,31 @@ static THD_FUNCTION(my_thread, arg) {
 			|| mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3) {
 			if (app_pas_pwr > 0.0 && !pid_speed_set_or_ramping) {
 				calculate_and_set_pas_max_erpm();
-			} else if (app_adc_pwr > 0.1) {
-				float erpm = 2200;
-				if (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1) {
-					app_disable_output(DIABLE_APP_OUTPUT_MS);
-					erpm = calculate_target_erpm(THROTTLE_SPEED_MS, CUTOFF_THROTTLE_SPEED_MS);
-					if (erpm < ERPM_STOP_THRESHOLD) {
-						mc_interface_release_motor();
-						continue;
-					}
-					utils_truncate_number(&erpm, 800, 4000);
-					ramp_current_and_set_pid_speed(erpm);
-				} else if (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3) {
-					erpm = calculate_target_erpm(CLASS12_SPEED_MS, CUTOFF_CLASS12_SPEED_MS);
-					float current_speed = mc_interface_get_speed();
-					if (current_speed == 0.0 || pid_speed_set_or_ramping) {
-						app_disable_output(DIABLE_APP_OUTPUT_MS);
-						ramp_current_and_set_pid_speed(2200);
-					} else {
-						if (erpm < ERPM_STOP_THRESHOLD) {
-							app_disable_output(DIABLE_APP_OUTPUT_MS);
-							mc_interface_release_motor();
-						}
-						set_max_erpm(erpm);
-					}
+			} else if (app_adc_pwr > 0.1 && (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1)) {
+				app_disable_output(DIABLE_APP_OUTPUT_MS);
+				float erpm = calculate_target_erpm(THROTTLE_SPEED_MS, CUTOFF_THROTTLE_SPEED_MS);
+				if (erpm < ERPM_STOP_THRESHOLD) {
+					mc_interface_release_motor();
+					continue;
 				}
+				utils_truncate_number(&erpm, 800, 4000);
+				ramp_current_and_set_pid_speed(erpm);
+			} else if (app_adc_pwr > 0.1 && (mc_interface_get_speed() == 0.0 || pid_speed_set_or_ramping) 
+						&& (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
+				app_disable_output(DIABLE_APP_OUTPUT_MS);
+				ramp_current_and_set_pid_speed(2500);
+			} else if (app_adc_pwr > 0.0 && (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
+				float erpm = calculate_target_erpm(CLASS12_SPEED_MS, CUTOFF_CLASS12_SPEED_MS);
+				if (erpm < ERPM_STOP_THRESHOLD) {
+					app_disable_output(DIABLE_APP_OUTPUT_MS);
+					mc_interface_release_motor();
+				}
+				set_max_erpm(erpm);
 			} else if (was_pid || pid_speed_set_or_ramping) {
 				mc_interface_release_motor();
 				walk_current_ramp = 0.0f;
 				pid_speed_set_or_ramping = false;
 				was_pid = false;
-			} else if (app_adc_pwr > 0.0) {
-				// kind of a safety feature. On my bikes after motor engages the ADC voltage 
-				// tends to go up and not release the motor completly when the throttle is released
-				mc_interface_set_current_rel(0.0);
-				app_disable_output(DIABLE_APP_OUTPUT_MS);
 			} 
 		} else if (mode == EBIKE_MODE_UNRESTRICTED_PLUS) {
  			if (app_pas_pwr > 0.05 || app_adc_pwr > 0.05) {
@@ -421,6 +411,8 @@ float app_custom_max_erpm(void) {
 // Callback function for the terminal command with arguments.
 static void ebike_test(int argc, const char **argv) {
 	(void)argc; (void)argv;
-	commands_printf("ADC1: %.2f V SR: %.2f MODE %d ERPM: %.2f PWR: %.2f",
-		(double)ADC_VOLTS(ADC_IND_EXT), (double)filtered_speed_ratio, mode, (double) mc_interface_get_rpm(), (double) last_app_pwr);
+	commands_printf("ADC1: %.2f V SR: %.2f MODE %d ERPM: %.2f PWR: %.2f PID: %d PAS: %.2f",
+		(double)ADC_VOLTS(ADC_IND_EXT), (double)filtered_speed_ratio, mode, 
+		(double) mc_interface_get_rpm(), (double) last_app_pwr, (double) pid_speed_set_or_ramping,
+		(double) app_pas_get_current_target_rel());
 }

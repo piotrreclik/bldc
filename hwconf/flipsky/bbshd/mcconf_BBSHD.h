@@ -16,7 +16,7 @@
 #define MCCONF_SENSOR_MODE 0
 
 // Motor Current Max
-#define MCCONF_L_CURRENT_MAX 80
+#define MCCONF_L_CURRENT_MAX 82.0
 
 // Motor Current Max Brake
 #define MCCONF_L_CURRENT_MIN -20
@@ -70,10 +70,10 @@
 #define MCCONF_L_LIM_TEMP_FET_END 90
 
 // Motor Temp Cutoff Start
-#define MCCONF_L_LIM_TEMP_MOTOR_START 95
+#define MCCONF_L_LIM_TEMP_MOTOR_START 90
 
 // Motor Temp Cutoff End
-#define MCCONF_L_LIM_TEMP_MOTOR_END 105
+#define MCCONF_L_LIM_TEMP_MOTOR_END 100
 
 // Acceleration Temperature Decrease
 #define MCCONF_L_LIM_TEMP_ACCEL_DEC 0.02
@@ -151,13 +151,13 @@
 #define MCCONF_HALL_ERPM 2000
 
 // Current KP
-#define MCCONF_FOC_CURRENT_KP 0.1377
+#define MCCONF_FOC_CURRENT_KP 0.22
 
 // Current KI
-#define MCCONF_FOC_CURRENT_KI 8
+#define MCCONF_FOC_CURRENT_KI 41
 
 // Zero Vector Frequency
-#define MCCONF_FOC_F_ZV 27500
+#define MCCONF_FOC_F_ZV 30000
 
 // Dead Time Compensation
 #define MCCONF_FOC_DT_US 0.14
@@ -184,16 +184,16 @@
 #define MCCONF_FOC_MOTOR_L 0.000223458
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000091
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000045
 
 // Motor Resistance (R)
 #define MCCONF_FOC_MOTOR_R 0.044
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01933
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01944
 
 // Observer Gain (x1M)
-#define MCCONF_FOC_OBSERVER_GAIN 770000
+#define MCCONF_FOC_OBSERVER_GAIN 2330000
 
 // Observer Gain At Minimum Duty
 #define MCCONF_FOC_OBSERVER_GAIN_SLOW 0.1
@@ -214,7 +214,7 @@
 #define MCCONF_FOC_START_CURR_DEC_RPM 3000
 
 // Openloop ERPM
-#define MCCONF_FOC_OPENLOOP_RPM 1500
+#define MCCONF_FOC_OPENLOOP_RPM 600
 
 // Openloop ERPM at Min Current
 #define MCCONF_FOC_OPENLOOP_RPM_LOW 0
@@ -232,10 +232,10 @@
 #define MCCONF_FOC_SL_OPENLOOP_TIME 0.1
 
 // Openloop Current Boost
-#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 1
+#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 5
 
 // Openloop Current Max
-#define MCCONF_FOC_SL_OPENLOOP_MAX_Q -1
+#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 12
 
 // Hall Table [0]
 #define MCCONF_FOC_HALL_TAB_0 255
@@ -262,13 +262,13 @@
 #define MCCONF_FOC_HALL_TAB_7 255
 
 // Hall Interpolation ERPM
-#define MCCONF_FOC_HALL_INTERP_ERPM 300
+#define MCCONF_FOC_HALL_INTERP_ERPM 250
 
 // Sensored ERPM Start
 #define MCCONF_FOC_SL_ERPM_START 800
 
 // Sensorless ERPM
-#define MCCONF_FOC_SL_ERPM 1500
+#define MCCONF_FOC_SL_ERPM 6000
 
 // Control Sample Mode
 #define MCCONF_FOC_CONTROL_SAMPLE_MODE 0
@@ -280,13 +280,13 @@
 #define MCCONF_FOC_SAT_COMP_MODE 3
 
 // Saturation Compensation Factor
-#define MCCONF_FOC_SAT_COMP 0.12
+#define MCCONF_FOC_SAT_COMP 0.22
 
 // Temp Comp
 #define MCCONF_FOC_TEMP_COMP 1
 
 // Temp Comp Base Temp
-#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 22.9
+#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 21.6
 
 // Current Filter Constant
 #define MCCONF_FOC_CURRENT_FILTER_CONST 0.1
@@ -295,7 +295,7 @@
 #define MCCONF_FOC_CC_DECOUPLING 0
 
 // Observer Type
-#define MCCONF_FOC_OBSERVER_TYPE 5
+#define MCCONF_FOC_OBSERVER_TYPE 3
 
 // HFI Ambiguity Resolve Mode
 #define MCCONF_FOC_HFI_AMB_MODE 0
@@ -379,22 +379,22 @@
 #define MCCONF_FOC_PHASE_FILTER_MAX_ERPM 2500
 
 // MTPA Algorithm Mode
-#define MCCONF_FOC_MTPA_MODE 1
+#define MCCONF_FOC_MTPA_MODE 2
 
 // Field Weakening Duty Start
-#define MCCONF_FOC_FW_DUTY_START 0.9
+#define MCCONF_FOC_FW_DUTY_START 0.85
 
 // Field Weakening Ramp Time
-#define MCCONF_FOC_FW_RAMP_TIME 0.3
+#define MCCONF_FOC_FW_RAMP_TIME 0.4
 
 // Q Axis Current Factor
-#define MCCONF_FOC_FW_Q_CURRENT_FACTOR 0.05
+#define MCCONF_FOC_FW_Q_CURRENT_FACTOR 0.1
 
 // Backoff Gain
-#define MCCONF_FOC_FW_BACKOFF 1.8
+#define MCCONF_FOC_FW_BACKOFF 2
 
 // Speed Tracker Position Source
-#define MCCONF_FOC_SPEED_SOURCE 0
+#define MCCONF_FOC_SPEED_SOURCE 1
 
 // Short Low-Side FETs on Zero Duty
 #define MCCONF_FOC_SHORT_LS_ON_ZERO_DUTY 0
@@ -403,7 +403,7 @@
 #define MCCONF_FOC_OVERMOD_FACTOR 1.05
 
 // Maximum VD Magnitude
-#define MCCONF_FOC_MAG_VD_MAX 0.98
+#define MCCONF_FOC_MAG_VD_MAX 0.9
 
 // PID Loop Rate
 #define MCCONF_SP_PID_LOOP_RATE 5
@@ -460,7 +460,7 @@
 #define MCCONF_CC_STARTUP_BOOST_DUTY 0.01
 
 // Minimum Current
-#define MCCONF_CC_MIN_CURRENT 0.5
+#define MCCONF_CC_MIN_CURRENT 1
 
 // Current Controller Gain
 #define MCCONF_CC_GAIN 0.0046

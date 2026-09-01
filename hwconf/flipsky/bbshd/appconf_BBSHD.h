@@ -121,13 +121,13 @@
 #define APPCONF_ADC_CTRL_TYPE 8
 
 // Input Deadband
-#define APPCONF_ADC_HYST 0.01
+#define APPCONF_ADC_HYST 0.02
 
 // ADC1 Start Voltage
-#define APPCONF_ADC_VOLTAGE_START 0.97
+#define APPCONF_ADC_VOLTAGE_START 0.94
 
 // ADC1 End Voltage
-#define APPCONF_ADC_VOLTAGE_END 2.7
+#define APPCONF_ADC_VOLTAGE_END 2.85
 
 // ADC1 Abs Min Voltage
 #define APPCONF_ADC_VOLTAGE_MIN 0
@@ -136,7 +136,7 @@
 #define APPCONF_ADC_VOLTAGE_MAX 3.5
 
 // ADC1 Center Voltage
-#define APPCONF_ADC_VOLTAGE_CENTER 1.81
+#define APPCONF_ADC_VOLTAGE_CENTER 1.9
 
 // ADC2 Start Voltage
 #define APPCONF_ADC_VOLTAGE2_START 0.9
@@ -160,7 +160,7 @@
 #define APPCONF_ADC_VOLTAGE2_INVERTED 0
 
 // Throttle Expo
-#define APPCONF_ADC_THROTTLE_EXP -0.25
+#define APPCONF_ADC_THROTTLE_EXP -0.30
 
 // Throttle Expo Brake
 #define APPCONF_ADC_THROTTLE_EXP_BRAKE 0
@@ -172,7 +172,7 @@
 #define APPCONF_ADC_RAMP_TIME_POS 0.3
 
 // Negative Ramping Time
-#define APPCONF_ADC_RAMP_TIME_NEG 0.05
+#define APPCONF_ADC_RAMP_TIME_NEG 0.15
 
 // Multiple VESCs Over CAN
 #define APPCONF_ADC_MULTI_ESC 0
