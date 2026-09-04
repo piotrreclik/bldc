@@ -16,7 +16,7 @@
 #define MCCONF_L_BATTERY_CUT_END 60
 
 // Max ERPM
-#define MCCONF_L_RPM_MAX 35000
+#define MCCONF_L_RPM_MAX 38000
 
 // MCCONF_BBSHD_72V_H_
 #endif

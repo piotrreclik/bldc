@@ -2419,12 +2419,12 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 	const float effective_max_erpm = utils_min_abs(conf->l_max_erpm, app_custom_max_erpm());
 	const float rpm_pos_cut_start = effective_max_erpm * conf->l_erpm_start;
 	const float rpm_pos_cut_end = effective_max_erpm;
-	if (rpm_now < (rpm_pos_cut_start + 0.1)) {
+	if (rpm_slow < (rpm_pos_cut_start + 0.1)) {
 		lo_max_rpm = l_current_max_tmp;
-	} else if (rpm_now > (rpm_pos_cut_end - 0.1)) {
+	} else if (rpm_slow > (rpm_pos_cut_end - 0.1)) {
 		lo_max_rpm = 0.0;
 	} else {
-		lo_max_rpm = utils_map(rpm_now, rpm_pos_cut_start, rpm_pos_cut_end, l_current_max_tmp, 0.0);
+		lo_max_rpm = utils_map(rpm_slow, rpm_pos_cut_start, rpm_pos_cut_end, l_current_max_tmp, 0.0);
 	}
 
 	// RPM min

@@ -57,9 +57,12 @@
 #define CUTOFF_THROTTLE_SPEED_MS 1.67f // 6 km/h
 
 #define APP_UPDATE_RATE_HZ 		50
-#define APP_SLEEP_MS 			1000 / APP_UPDATE_RATE_HZ
-#define DIABLE_APP_OUTPUT_MS 	APP_SLEEP_MS * 2
+#define APP_SLEEP_MS 			(1000 / APP_UPDATE_RATE_HZ)
+#define DISABLE_APP_OUTPUT_MS 	(APP_SLEEP_MS * 2)
 #define APP_UPDATE_LOOP_DT      (1.0f / (float)APP_UPDATE_RATE_HZ)
+#define PID_SPIN_UP_TIME_MS		1500
+#define PID_SPIN_UP_CYCLES		(PID_SPIN_UP_TIME_MS / APP_SLEEP_MS)
+#define SPIN_UP_CYCLES			8
 
 // Soft-start tuning parameters for the Bafang BBSHD motor
 #define WALK_START_CURRENT_TARGET  15.0f   // Gentle current (A) to silently eliminate gear backlash
@@ -77,11 +80,13 @@ static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile bool was_pid = false;
 static volatile bool release_motor = false;
+static volatile bool pid_speed_set_or_ramping = false;
 static volatile float last_app_pwr;
 static volatile float last_erpm;
 static volatile float last_current = 0.0f;
-static volatile float walk_current_ramp = 0.0f;
-static volatile bool pid_speed_set_or_ramping = false;
+static volatile float walk_current_ramp = 3.0f;
+static volatile uint8_t spin_up_step = 0;
+
 static volatile float max_erpm = 100000.0f;
 
 static float filtered_speed_ratio = (MIN_SPEED_RATIO + MAX_SPEED_RATIO) / 2;
@@ -131,6 +136,28 @@ void app_custom_release_motor(void) {
 	release_motor = true;
 }
 
+void schedule_spin_up(void) {
+	spin_up_step = 0;
+}
+
+void cancel_spin_up(void) {
+	spin_up_step = PID_SPIN_UP_CYCLES;
+}
+
+void spin_up_if_scheduled(float erpm) {
+	if (spin_up_step < PID_SPIN_UP_CYCLES) {
+		spin_up_step++;
+		app_disable_output(DISABLE_APP_OUTPUT_MS);
+		float current_target_erpm = utils_map((float)spin_up_step, 1.0f, (float)PID_SPIN_UP_CYCLES, 1000.0f, 0.8 * erpm);
+		utils_truncate_number(&current_target_erpm, 1000.0f, 0.9 * erpm);
+		mc_interface_set_pid_speed(current_target_erpm);
+	}					
+}
+
+bool is_spinning_up(void) {
+	return spin_up_step > 0 && spin_up_step < PID_SPIN_UP_CYCLES;
+}
+
 /**
  * @brief Unified Speed Ratio Control Loop (50Hz)
  * Optimizes motor target ERPM by tracking dimensionless speed ratios
@@ -165,7 +192,7 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     // Dynamic free-wheeling / no-load tracking based on the previous target ERPM loop output
     const float last_target_erpm = target_speed_ms * smoothed_speed_ratio;
     const bool motor_at_no_load_target = (fabsf(current_erpm - last_target_erpm) < (last_target_erpm * 0.05f)) 
-                                         && (current_current < 0.8f);
+                                         && (current_current < 3.0f);
 
     // --- 3. DYNAMIC FILTER COEFFICIENTS (ALPHA) ---
     float active_alpha = (target_speed_ms < SPEED_THRESHOLD_MS) ? ALPHA_SLOW : ALPHA_FAST;
@@ -203,8 +230,8 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
             utils_truncate_number(&raw_speed_ratio, MIN_SPEED_RATIO, MAX_SPEED_RATIO);
             UTILS_LP_FAST(filtered_speed_ratio, raw_speed_ratio, active_alpha);
             
-            //commands_printf("Ratio Update! Filtered: %0.2f, CC: %0.2f, Mean: %0.1f, Alpha: %0.2f", 
-                            //(double)filtered_speed_ratio, (double)current_current, (double)exact_mean_erpm, (double)active_alpha);
+            commands_printf("Ratio Update! Filtered: %0.2f, CC: %0.2f, Mean: %0.1f, Alpha: %0.2f", 
+                            (double)filtered_speed_ratio, (double)current_current, (double)exact_mean_erpm, (double)active_alpha);
 
             // Flush integration pipeline for the next hardware window
             erpm_sum = 0.0f;
@@ -222,14 +249,14 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
             erpm_sample_count++;
             
             // Localized micro adjustment downwards
-            if (overshot_target && current_current > 1.0f && (!motor_at_no_load_target || low_speed_domain)) {
+            if (overshot_target && current_current > 2.0f && ((!motor_at_no_load_target && !motor_slowing_down) || low_speed_domain)) {
                 filtered_speed_ratio -= target_speed_ms;
-                //commands_printf("Ratio Auto-Trim [-%0.1f]: %0.2f, CC: %0.2f", (double)target_speed_ms, (double)filtered_speed_ratio, (double)current_current);
+                commands_printf("Ratio Auto-Trim [-%0.1f]: %0.2f, CC: %0.2f", (double)target_speed_ms, (double)filtered_speed_ratio, (double)current_current);
             } 
             // Localized high-speed emergency micro adjustment upwards (Locked out in low speed domain by application design)
-            else if (undershot_target && motor_at_no_load_target && target_speed_ms > SPEED_THRESHOLD_MS) {
+            else if (undershot_target && motor_at_no_load_target && !low_speed_domain && !is_spinning_up()) {
                 filtered_speed_ratio += (target_speed_ms * 5.0f);
-                //commands_printf("Ratio Auto-Trim [+%0.1f]: %0.2f, CC: %0.2f", (double)(target_speed_ms * 5.0f), (double)filtered_speed_ratio, (double)current_current);
+                commands_printf("Ratio Auto-Trim [+%0.1f]: %0.2f, CC: %0.2f", (double)(target_speed_ms * 5.0f), (double)filtered_speed_ratio, (double)current_current);
             }
         }
     } 
@@ -237,7 +264,7 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     else if (overshot_cutoff && last_current > 1.5f) {
         // Soft launch preparation: smoothly drop ratio during power-off coasting past cut-off speed
         filtered_speed_ratio -= 80.0f; 
-        //commands_printf("Soft Launch Prep [-80.0]: %0.2f", (double)filtered_speed_ratio);
+        commands_printf("Soft Launch Prep [-80.0]: %0.2f", (double)filtered_speed_ratio);
         erpm_sum = 0.0f;
         erpm_sample_count = 0;    
     } 
@@ -262,34 +289,65 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     return overshot_cutoff ? 0.0f : (target_speed_ms * smoothed_speed_ratio);
 }
 
+float get_max_pas_erpm(void) {
+	const volatile app_configuration *app_conf = app_get_configuration();
+	const volatile mc_configuration *mc_conf = mc_interface_get_configuration();
+
+	if (!app_conf || !mc_conf) {
+		return 0.0f; 
+	}
+
+	float gear_ratio = mc_conf->si_gear_ratio;
+	float pole_pairs = (float)mc_conf->si_motor_poles / 2.0f;
+	float max_pedal_cadence = app_conf->app_pas_conf.pedal_rpm_end;
+	float min_pedal_cadence = app_conf->app_pas_conf.pedal_rpm_start;
+	if (max_pedal_cadence < min_pedal_cadence) {
+		return mc_interface_get_configuration()->l_max_erpm;
+	}
+	float max_pas_erpm = max_pedal_cadence * gear_ratio * pole_pairs;
+	// in order to start taper the power only after the max cadence rpm is reached
+	// we need to extend the limit by the complement of erpm current limit start
+	float erpm_start_ratio = mc_conf->l_erpm_start; 
+	utils_truncate_number(&erpm_start_ratio, 0.0f, 1.0f);
+	float mirrored_ratio = 1.0f - erpm_start_ratio;
+	return max_pas_erpm + (mirrored_ratio * max_pas_erpm);
+}
+
 void set_max_erpm(float lo_max_erpm) {
 	utils_truncate_number(&lo_max_erpm, 1500, mc_interface_get_configuration()->l_max_erpm);
 	max_erpm = lo_max_erpm;
 }
 
-void calculate_and_set_pas_max_erpm(void) {
-	float lo_max_erpm = 10000;
+void calculate_and_set_pas_max_erpm(float app_adc_pwr) {
+	float target_speed_max_erpm = 10000;
 	if (mode == EBIKE_MODE_COMPLIANT) {
-		lo_max_erpm = calculate_target_erpm(PAS_SPEED_MS, CUTOFF_PAS_SPEED_MS);
+		target_speed_max_erpm = calculate_target_erpm(PAS_SPEED_MS, CUTOFF_PAS_SPEED_MS);
 	} else if (mode == EBIKE_MODE_CLASS1 || mode == EBIKE_MODE_CLASS2) {
-		lo_max_erpm = calculate_target_erpm(CLASS12_SPEED_MS, CUTOFF_CLASS12_SPEED_MS);
+		target_speed_max_erpm = calculate_target_erpm(CLASS12_SPEED_MS, CUTOFF_CLASS12_SPEED_MS);
 	} else if (mode == EBIKE_MODE_CLASS3) {
-		lo_max_erpm = calculate_target_erpm(CLASS3_PAS_SPEED_MS, CUTOFF_CLASS3_PAS_SPEED_MS);
+		target_speed_max_erpm = calculate_target_erpm(CLASS3_PAS_SPEED_MS, CUTOFF_CLASS3_PAS_SPEED_MS);
 	}
-	if (lo_max_erpm < ERPM_STOP_THRESHOLD) {
+	if (target_speed_max_erpm < ERPM_STOP_THRESHOLD) {
+		app_disable_output(DISABLE_APP_OUTPUT_MS);
 		mc_interface_release_motor();
-		app_disable_output(DIABLE_APP_OUTPUT_MS);
+		schedule_spin_up();
 		return;
-	}
-	// in pedal modes limit the erpms to equal roughly 150 crank cadence
-	utils_truncate_number(&lo_max_erpm, 1500, 15000);
-	set_max_erpm(lo_max_erpm);
+	} 
+
+	spin_up_if_scheduled(target_speed_max_erpm);
+	// in pedal modes limit the erpms to equal roughly 120 crank cadence
+	// if throttle is pressed ramp the limit rpm
+	float pas_max_erpm_limit_start = get_max_pas_erpm();
+	float pas_max_erpm = utils_map(app_adc_pwr, 0.1f, 1.0f, pas_max_erpm_limit_start, target_speed_max_erpm);
+	utils_truncate_number(&pas_max_erpm, pas_max_erpm_limit_start, target_speed_max_erpm);
+	utils_truncate_number(&target_speed_max_erpm, 1500, pas_max_erpm);
+	max_erpm = target_speed_max_erpm;
 }
 
 static void ramp_current_and_set_pid_speed(float erpm) {
 	pid_speed_set_or_ramping = true;
 	float current_erpm = mc_interface_get_rpm();
-	if (!was_pid && (current_erpm < (erpm * 0.8))) {
+	if (!was_pid && (current_erpm < (erpm * 0.3))) {
 		if (walk_current_ramp < WALK_START_CURRENT_TARGET) {
 			walk_current_ramp += WALK_CURRENT_RAMP_RATE * APP_UPDATE_LOOP_DT;
 		} else {
@@ -328,14 +386,36 @@ static THD_FUNCTION(my_thread, arg) {
 			prev_mode = mode;
 		} 
 
-		float app_adc_pwr = app_adc_get_decoded_level();
 		float app_pas_pwr = app_pas_get_current_target_rel();
+		float app_adc_pwr = app_adc_get_decoded_level();
+		if (mode == EBIKE_MODE_CLASS3 && app_pas_pwr > 0.0) {
+			float l_erpm_start = mc_interface_get_configuration()->l_erpm_start;
+			float current_speed_ms = mc_interface_get_speed();
+			float speed_start_fade = CLASS12_SPEED_MS * l_erpm_start;
+			float speed_max_limit = CLASS12_SPEED_MS;
+			if (current_speed_ms > speed_start_fade) {
+				float fade_scaler = utils_map(current_speed_ms, speed_start_fade, speed_max_limit, 1.0f, 0.0f);
+				utils_truncate_number(&fade_scaler, 0.0f, 1.0f);
+				float mapped_adc_pwr = app_adc_pwr * fade_scaler;
+				app_adc_adc1_override(mapped_adc_pwr);
+				app_adc_detach_adc(1);
+			} else {
+				app_adc_adc1_override(0.0);
+				app_adc_detach_adc(0);
+			}
+		} else {
+			app_adc_adc1_override(0.0);
+			app_adc_detach_adc(0);
+		} 
+		app_adc_pwr = app_adc_get_decoded_level();
+
 		if (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1 
 			|| mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3) {
+			bool motor_active = app_pas_pwr > 0.0 || is_spinning_up() || pid_speed_set_or_ramping;
 			if (app_pas_pwr > 0.0 && !pid_speed_set_or_ramping) {
-				calculate_and_set_pas_max_erpm();
+				calculate_and_set_pas_max_erpm(app_adc_pwr);
 			} else if (app_adc_pwr > 0.1 && (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1)) {
-				app_disable_output(DIABLE_APP_OUTPUT_MS);
+				app_disable_output(DISABLE_APP_OUTPUT_MS);
 				float erpm = calculate_target_erpm(THROTTLE_SPEED_MS, CUTOFF_THROTTLE_SPEED_MS);
 				if (erpm < ERPM_STOP_THRESHOLD) {
 					mc_interface_release_motor();
@@ -345,20 +425,25 @@ static THD_FUNCTION(my_thread, arg) {
 				ramp_current_and_set_pid_speed(erpm);
 			} else if (app_adc_pwr > 0.1 && (mc_interface_get_speed() == 0.0 || pid_speed_set_or_ramping) 
 						&& (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
-				app_disable_output(DIABLE_APP_OUTPUT_MS);
+				app_disable_output(DISABLE_APP_OUTPUT_MS);
 				ramp_current_and_set_pid_speed(2500);
-			} else if (app_adc_pwr > 0.0 && (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
+			} else if (((app_adc_pwr > 0.05 && motor_active) || (app_adc_pwr > 0.0 && !motor_active)) 
+						&& (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
 				float erpm = calculate_target_erpm(CLASS12_SPEED_MS, CUTOFF_CLASS12_SPEED_MS);
 				if (erpm < ERPM_STOP_THRESHOLD) {
-					app_disable_output(DIABLE_APP_OUTPUT_MS);
+					app_disable_output(DISABLE_APP_OUTPUT_MS);
 					mc_interface_release_motor();
+					schedule_spin_up();
+				} else {
+					spin_up_if_scheduled(erpm);
+					set_max_erpm(erpm);
 				}
-				set_max_erpm(erpm);
-			} else if (was_pid || pid_speed_set_or_ramping) {
+			} else if (was_pid || pid_speed_set_or_ramping || is_spinning_up()) {
 				mc_interface_release_motor();
-				walk_current_ramp = 0.0f;
+				walk_current_ramp = 3.0f;
 				pid_speed_set_or_ramping = false;
 				was_pid = false;
+				cancel_spin_up();
 			} 
 		} else if (mode == EBIKE_MODE_UNRESTRICTED_PLUS) {
  			if (app_pas_pwr > 0.05 || app_adc_pwr > 0.05) {
@@ -369,7 +454,7 @@ static THD_FUNCTION(my_thread, arg) {
 				last_app_pwr = utils_max_abs(app_pas_pwr, app_adc_pwr);
 				last_erpm = mc_interface_get_rpm();
 			} else if (last_app_pwr > 0.0) {
-				app_disable_output(DIABLE_APP_OUTPUT_MS);
+				app_disable_output(DISABLE_APP_OUTPUT_MS);
 				mc_interface_set_pid_speed(last_erpm + 200);
 				was_pid = true;
 				release_motor = false;
@@ -385,7 +470,7 @@ static THD_FUNCTION(my_thread, arg) {
 					if ((curr_erpm + 400) < last_erpm) {
 						if (curr_erpm > 2000.0) {
 							last_erpm = curr_erpm;
-							app_disable_output(DIABLE_APP_OUTPUT_MS);
+							app_disable_output(DISABLE_APP_OUTPUT_MS);
 							mc_interface_set_pid_speed(curr_erpm + 150);
 							was_pid = true;
 						} else {
@@ -394,7 +479,7 @@ static THD_FUNCTION(my_thread, arg) {
 							was_pid = false;
 						}
 					} else {
-						app_disable_output(DIABLE_APP_OUTPUT_MS);
+						app_disable_output(DISABLE_APP_OUTPUT_MS);
 						mc_interface_set_pid_speed(last_erpm + 150);
 						was_pid = true;
 					}
