@@ -2,14 +2,37 @@
 
 This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds a bunch of bike features on top of bare VESC implementation.
 
+## The FW features
+
+* Bafang uart display support
+    * Max current scale depending on PAS assist level
+    * Battery SOC available even on 72V builds
+    * Can display motor temperature instead of speed (unfortunately will work well only for displays configured to show kmh)
+* Wheel speed sensor
+    * Speedometer and odo are working all the time (not only if the motor is spinning)
+* Enhanced PAS
+    * Handling pas signals with interrupts rather than pulling as in bare VESC FW
+    * Configurable engagement angle (hacky, but it is there)
+        * On the PAS application configuration there is a start rpm
+        * The value is a start PAS rpm, but on top of that the fractional digits of this config control the initial angle of rotation needed to engage PAS. The maximum angle is 180 degrees. For example if we have a value of 7.6 in this value, the start rpm will be 7 rpm and the angle of engagement 0.6 * 180 = 108 degrees. So .1 is almost instant (the lower bound is capped to at least 5 pulses), .99 around 188 degrees
+    * Enhanced current ramp derived from cadence rpm. Bare VESC scales the current to 0 at min pedal rpm. This FW scales this to 2/3 of total available current at max cadence rpm
+    * Motor support tapers after reaching maximum configured cadence RPM
+* Six ride modes
+    * EPAC -> PAS 25 kmh, throttle up to 6kmh (walk assist)
+    * US CLASS 1 -> PAS 32 kmh, throttle up to 6kmh (walk assist)
+    * US CLASS 2 -> PAS 32 kmh, throttle 32 kmh / walk assist from dead stop
+    * US CLASS 3 -> PAS 45 kmh, throttle 32 kmh / walk assist from dead stop
+    * UNLIMITED -> full power as a bare VESC FW would be
+    * UNLIMITED+ -> full power + freewheeling / cruise control
+
 ## How to use it?
 
 ### Build your harness
 
 * Use 52V wiring diagram \
-![52V](bbshd_wiring_52v.png)
+![52V](bbshd_wiring_52V.png)
 * or 72V wiring diagram \
-![72V](bbshd_wiring_72v.png)
+![72V](bbshd_wiring_72V.png)
 
 ### Flash your Flipsky
 
@@ -80,27 +103,5 @@ This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds
     * Check if the speed sensor works
 * If all went well go out and ride your damn bike!
 
-## The FW features
-
-* Bafang uart display support
-    * Max current scale depending on PAS assist level
-    * Battery SOC available even on 72V builds
-    * Can display motor temperature instead of speed (unfortunately will work well only for displays configured to show kmh)  
-* Wheel speed sensor
-    * Speedometer and odo are working all the time (not only if the motor is spinning)
-* Enhanced PAS
-    * Handling pas signals with interrupts rather than pulling as in bare VESC FW
-    * Configurable engagement angle (hacky, but it is there)
-        * On the PAS application configuration there is a start rpm
-        * The value is a start PAS rpm, but on top of that the fractional digits of this config control the initial angle of rotation needed to engage PAS. The maximum angle is 180 degrees. For example if we have a value of 7.6 in this value, the start rpm will be 7 rpm and the angle of engagement 0.6 * 180 = 108 degrees. So .1 is almost instant (the lower bound is capped to at least 5 pulses), .99 around 188 degrees
-    * Enhanced current ramp derived from cadence rpm. Bare VESC scales the current to 0 at min pedal rpm. This FW scales this to 2/3 of total available current at max cadence rpm
-    * Motor support tapers after reaching maximum configured cadence RPM 
-* Six ride modes
-    * EPAC -> PAS 25 kmh, throttle up to 6kmh (walk assist)
-    * US CLASS 1 -> PAS 32 kmh, throttle up to 6kmh (walk assist)
-    * US CLASS 2 -> PAS 32 kmh, throttle 32 kmh / walk assist from dead stop
-    * US CLASS 3 -> PAS 45 kmh, throttle 32 kmh / walk assist from dead stop
-    * UNLIMITED -> full power as a bare VESC FW would be
-    * UNLIMITED+ -> full power + freewheeling / cruise control
 
 
