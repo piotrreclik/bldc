@@ -166,7 +166,7 @@
 #define MCCONF_FOC_HALL_INTERP_ERPM 250
 
 // Sensored ERPM Start
-#define MCCONF_FOC_SL_ERPM_START 1500
+#define MCCONF_FOC_SL_ERPM_START 1200
 
 // Sensorless ERPM
 #define MCCONF_FOC_SL_ERPM 3000
@@ -226,7 +226,7 @@
 #define MCCONF_FOC_FW_BACKOFF 2
 
 // Speed Tracker Position Source
-#define MCCONF_FOC_SPEED_SOURCE 1
+#define MCCONF_FOC_SPEED_SOURCE 0
 
 // Short Low-Side FETs on Zero Duty
 #define MCCONF_FOC_SHORT_LS_ON_ZERO_DUTY 0
@@ -253,7 +253,7 @@
 #define MCCONF_S_PID_KD_FILTER 0.2
 
 // Minimum ERPM
-#define MCCONF_S_PID_MIN_RPM 800
+#define MCCONF_S_PID_MIN_RPM 899
 
 // Allow Braking
 #define MCCONF_S_PID_ALLOW_BRAKING 1
