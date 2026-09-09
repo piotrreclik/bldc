@@ -356,6 +356,8 @@ void calculate_and_set_pas_max_erpm(float app_adc_pwr) {
 	float pas_max_erpm_limit_start = get_max_pas_erpm();
 	float pas_max_erpm = utils_map(app_adc_pwr, 0.1f, 1.0f, pas_max_erpm_limit_start, target_speed_max_erpm);
 	utils_truncate_number(&pas_max_erpm, pas_max_erpm_limit_start, target_speed_max_erpm);
+	// if the rpm is already above the pas limit and throttle is pushed just ignore it
+	pas_max_erpm = (app_adc_pwr > 0.05 && mc_interface_get_rpm() > (pas_max_erpm + 400)) ? target_speed_max_erpm : pas_max_erpm;
 	utils_truncate_number(&target_speed_max_erpm, 1500, pas_max_erpm);
 	max_erpm = target_speed_max_erpm;
 }
@@ -372,6 +374,40 @@ static void ramp_and_set_pid_speed(float erpm) {
 	} else {
 		mc_interface_set_pid_speed(erpm);
 	}
+}
+
+static void override_adc_for_class3(float app_pas_pwr) {
+	if (mode == EBIKE_MODE_CLASS3 && app_pas_pwr > 0.0) {
+		float l_erpm_start = mc_interface_get_configuration()->l_erpm_start;
+		float speed_start_fade = class12_speed_ms * l_erpm_start;
+		float current_speed_ms = mc_interface_get_speed();
+		if (current_speed_ms > speed_start_fade) {
+			float fade_scaler = utils_map(current_speed_ms, speed_start_fade, class12_speed_ms, 1.0, 0.0);
+			utils_truncate_number(&fade_scaler, 0.0, 1.0);
+			adc_config config = app_get_configuration()->app_adc_conf;
+			float adc_raw_volts = ADC_VOLTS(ADC_IND_EXT);
+			float adc_raw_pwr = utils_map(adc_raw_volts, config.voltage_start, config.voltage_end, 0.0, 1.0);
+			utils_truncate_number(&adc_raw_pwr, 0.0, 1.0);
+			float scaled_adc_pwr = adc_raw_pwr * fade_scaler;
+			app_adc_adc1_override(utils_map(scaled_adc_pwr, 0.0, 1.0, config.voltage_start, config.voltage_end));
+			if (!override_adc1) {
+				override_adc1 = true;
+				app_adc_detach_adc(1);
+			}
+		} else {
+			if (override_adc1) {
+				override_adc1 = false;
+				app_adc_detach_adc(0);
+				app_adc_adc1_override(0.0);
+			}
+		}
+	} else {
+		if (override_adc1) {
+			override_adc1 = false;
+			app_adc_detach_adc(0);
+			app_adc_adc1_override(0.0);
+		}
+	} 
 }
 
 static THD_FUNCTION(my_thread, arg) {
@@ -400,37 +436,7 @@ static THD_FUNCTION(my_thread, arg) {
 		} 
 
 		float app_pas_pwr = app_pas_get_current_target_rel();
-		if (mode == EBIKE_MODE_CLASS3 && app_pas_pwr > 0.0) {
-			float l_erpm_start = mc_interface_get_configuration()->l_erpm_start;
-			float speed_start_fade = class12_speed_ms * l_erpm_start;
-			float current_speed_ms = mc_interface_get_speed();
-			if (current_speed_ms > speed_start_fade) {
-				float fade_scaler = utils_map(current_speed_ms, speed_start_fade, class12_speed_ms, 1.0, 0.0);
-				utils_truncate_number(&fade_scaler, 0.0, 1.0);
-				adc_config config = app_get_configuration()->app_adc_conf;
-				float adc_raw_volts = ADC_VOLTS(ADC_IND_EXT);
-				float adc_raw_pwr = utils_map(adc_raw_volts, config.voltage_start, config.voltage_end, 0.0, 1.0);
-				utils_truncate_number(&adc_raw_pwr, 0.0, 1.0);
-				float scaled_adc_pwr = adc_raw_pwr * fade_scaler;
-				app_adc_adc1_override(utils_map(scaled_adc_pwr, 0.0, 1.0, config.voltage_start, config.voltage_end));
-				if (!override_adc1) {
-					override_adc1 = true;
-					app_adc_detach_adc(1);
-				}
-			} else {
-				if (override_adc1) {
-					override_adc1 = false;
-					app_adc_detach_adc(0);
-					app_adc_adc1_override(0.0);
-				}
-			}
-		} else {
-			if (override_adc1) {
-				override_adc1 = false;
-				app_adc_detach_adc(0);
-				app_adc_adc1_override(0.0);
-			}
-		} 
+		override_adc_for_class3(app_pas_pwr);
 		float app_adc_pwr = app_adc_get_decoded_level();
 		if (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1 
 			|| mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3) {

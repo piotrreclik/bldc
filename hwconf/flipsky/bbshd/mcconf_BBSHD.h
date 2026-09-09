@@ -78,9 +78,6 @@
 // Maximum Duty Cycle
 #define MCCONF_L_MAX_DUTY 0.95
 
-// Maximum Wattage
-#define MCCONF_L_WATT_MAX 4000
-
 // Maximum Braking Wattage
 #define MCCONF_L_WATT_MIN -1000
 

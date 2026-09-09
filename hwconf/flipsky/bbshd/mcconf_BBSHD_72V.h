@@ -18,6 +18,9 @@
 // Max ERPM
 #define MCCONF_L_RPM_MAX 38000
 
+// Maximum Wattage
+#define MCCONF_L_WATT_MAX 4000
+
 // MCCONF_BBSHD_72V_H_
 #endif
 
