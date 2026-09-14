@@ -477,6 +477,9 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			status |= timeout_kill_sw_active() << 1;
 			send_buffer[ind++] = status;
 		}
+		if (mask & ((uint32_t)1 << 22)) {
+			buffer_append_float32(send_buffer, app_pas_get_pedal_rpm(), 1e3, &ind);
+		}
 
 		reply_func(send_buffer, ind);
 		mempools_free_packet_buffer(send_buffer);

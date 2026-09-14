@@ -103,13 +103,13 @@
 #define MCCONF_FOC_MOTOR_L 0.000223458
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000045
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000038
 
 // Motor Resistance (R)
 #define MCCONF_FOC_MOTOR_R 0.041
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01944
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01844
 
 // Observer Gain (x1M)
 #define MCCONF_FOC_OBSERVER_GAIN 2330000
@@ -130,16 +130,19 @@
 #define MCCONF_FOC_START_CURR_DEC_RPM 3000 
 
 // Openloop ERPM
-#define MCCONF_FOC_OPENLOOP_RPM 500
+#define MCCONF_FOC_OPENLOOP_RPM 400
+
+// Time to ramp up motor to openloop speed
+#define MCCONF_FOC_SL_OPENLOOP_T_RAMP 0.2
 
 // Openloop Time
 #define MCCONF_FOC_SL_OPENLOOP_TIME 0.1
 
 // Openloop Current Boost
-#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 3
+#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 2
 
 // Openloop Current Max
-#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 6
+#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 7
 
 // Hall Table [1]
 #define MCCONF_FOC_HALL_TAB_1 100
@@ -238,13 +241,13 @@
 #define MCCONF_SP_PID_LOOP_RATE 5
 
 // Speed PID Kp
-#define MCCONF_S_PID_KP 0.004
+#define MCCONF_S_PID_KP 0.008
 
 // Speed PID Ki
-#define MCCONF_S_PID_KI 0.004
+#define MCCONF_S_PID_KI 0.008
 
 // Speed PID Kd
-#define MCCONF_S_PID_KD 0.0001
+#define MCCONF_S_PID_KD 0.0002
 
 // Speed PID Kd Filter
 #define MCCONF_S_PID_KD_FILTER 0.2

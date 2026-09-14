@@ -38,7 +38,7 @@
 #define MAX_MS_WITHOUT_CADENCE_OR_TORQUE	5000
 #define MAX_MS_WITHOUT_CADENCE			1000
 #define MIN_MS_WITHOUT_POWER			500
-#define PULSES_TIME_SAMPLES_COUNT		5
+#define PULSES_TIME_SAMPLES_COUNT		4
 #define ENGAGEMENT_COUNTER_TIMEOUT_SECONDS 0.5F
 #define ENGAGEMENT_ANGLE 				180.0F
 #define DISENGAGEMENT_ANGLE 			70.0F
@@ -65,7 +65,7 @@ static volatile bool is_running = false;
 static volatile float torque_ratio = 0.0;
 
 static volatile int32_t pulses_counter = 0;
-static volatile systime_t pulse_time_samples[PULSES_TIME_SAMPLES_COUNT] = {0,0,0,0,0};
+static volatile systime_t pulse_time_samples[PULSES_TIME_SAMPLES_COUNT] = {0,0,0,0};
 static volatile uint32_t pulse_time_sample_index = 0;
 
 static void read_isr_count(int argc, const char **argv);

@@ -61,10 +61,10 @@
 #define APP_UPDATE_LOOP_DT        (1.0f / (float)APP_UPDATE_RATE_HZ)
 #define PID_SPIN_UP_TIME_MS		  800
 #define PID_SPIN_UP_CYCLES		  (PID_SPIN_UP_TIME_MS / APP_SLEEP_MS)
-#define PID_RAMP_UP_TIME_MS		  1500
-#define PID_RAMP_UP_CYCLES		  (PID_SPIN_UP_TIME_MS / APP_SLEEP_MS)
-#define SPIN_UP_BLANKING_TIME_MS  300
-#define SPIN_UP_BLANKING_CYCLES	  SPIN_UP_BLANKING_TIME_MS / APP_SLEEP_MS
+#define WALK_PID_RAMP_UP_TIME_MS  1200
+#define WALK_PID_RAMP_UP_CYCLES	  (WALK_PID_RAMP_UP_TIME_MS / APP_SLEEP_MS)
+#define SPIN_UP_BLANKING_TIME_MS  500
+#define SPIN_UP_BLANKING_CYCLES	  (SPIN_UP_BLANKING_TIME_MS / APP_SLEEP_MS)
 
 #define CUSTOM_SPEED_LIMIT_EEPROM_ADDR    42
 
@@ -162,8 +162,8 @@ void spin_up_if_scheduled(float erpm) {
 	if (spin_up_step < PID_SPIN_UP_CYCLES) {
 		spin_up_step++;
 		app_disable_output(DISABLE_APP_OUTPUT_MS);
-		float current_target_erpm = utils_map((float)spin_up_step, 1.0f, (float)PID_SPIN_UP_CYCLES, 1000.0f, 0.8 * erpm);
-		utils_truncate_number(&current_target_erpm, 1000.0f, 0.9 * erpm);
+		float current_target_erpm = utils_map((float)spin_up_step, 1.0f, (float)PID_SPIN_UP_CYCLES, 1000.0f, erpm);
+		utils_truncate_number(&current_target_erpm, 1000.0f, erpm);
 		mc_interface_set_pid_speed(current_target_erpm);
 	}					
 }
@@ -197,7 +197,7 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     // --- 2. ENVIRONMENT STATE ANALYSIS ---
     const float estimated_speed    = current_erpm / filtered_speed_ratio;
     const bool overshot_target      = (estimated_speed > (target_speed_ms * 1.04f)) || (current_speed > (target_speed_ms * 1.04f));
-    const bool undershot_target     = (estimated_speed < (target_speed_ms * 1.02f)) && (current_speed < (target_speed_ms * 0.98));
+    const bool undershot_target     = (estimated_speed < (target_speed_ms * 1.00f)) && (current_speed < (target_speed_ms * 0.98));
     const bool overshot_cutoff      = current_speed > cutoff_speed_ms;
     const bool first_speed_redout   = (prev_speed_ms == 0.0f);
     const bool motor_slowing_down   = (last_erpm - current_erpm) > 10.0f && current_current < 0.1f;
@@ -206,7 +206,7 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     
     // Dynamic free-wheeling / no-load tracking based on the previous target ERPM loop output
     const float last_target_erpm = target_speed_ms * smoothed_speed_ratio;
-    const bool motor_at_no_load_target = (fabsf(current_erpm - last_target_erpm) < (last_target_erpm * 0.04f)) 
+    const bool motor_at_no_load_target = (fabsf(current_erpm - last_target_erpm) < (last_target_erpm * 0.05f)) 
                                          && (current_current < 2.7f);
 
     // --- 3. DYNAMIC FILTER COEFFICIENTS (ALPHA) ---
@@ -234,19 +234,19 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     if (current_speed > 0.05f && fabsf(current_erpm) > 500.0f) {
         
         const bool low_speed_domain  = (target_speed_ms < SPEED_THRESHOLD_MS);
-        const bool can_update_filter = sensor_pulse_arrived && (spin_up_blanking_cycles == 0) 
+        const bool can_update_filter = sensor_pulse_arrived && (spin_up_blanking_cycles == 0) && !is_spinning_up()
                                        && !motor_slowing_down && (!motor_at_no_load_target || low_speed_domain);
         
         if (can_update_filter) {
             // Compute true mathematical average of ERPM during this single wheel rotation window
-            const float exact_mean_erpm = (erpm_sample_count > 0) ? (erpm_sum / (float)erpm_sample_count) : current_erpm;
+            const float exact_mean_erpm = (erpm_sample_count > 4) ? (erpm_sum / (float)erpm_sample_count) : current_erpm;
             float raw_speed_ratio = exact_mean_erpm / current_speed;
             
             utils_truncate_number(&raw_speed_ratio, MIN_SPEED_RATIO, MAX_SPEED_RATIO);
             UTILS_LP_FAST(filtered_speed_ratio, raw_speed_ratio, active_alpha);
             
-            //commands_printf("Ratio Update! Filtered: %0.2f, CC: %0.2f, Mean: %0.1f, Alpha: %0.2f", 
-            //                (double)filtered_speed_ratio, (double)current_current, (double)exact_mean_erpm, (double)active_alpha);
+            commands_printf("RU SR:%0.2f, CC:%0.2f, Mean:%0.1f, Alpha:%0.2f", 
+                            (double)filtered_speed_ratio, (double)current_current, (double)exact_mean_erpm, (double)active_alpha);
 
             // Flush integration pipeline for the next hardware window
             erpm_sum = 0.0f;
@@ -264,22 +264,22 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
             erpm_sample_count++;
             
             // Localized micro adjustment downwards
-            if (overshot_target && current_current > 2.0f && ((!motor_at_no_load_target && !motor_slowing_down) || low_speed_domain)) {
-                filtered_speed_ratio -= 2.0f * target_speed_ms;
-                //commands_printf("Ratio Auto-Trim [-%0.1f]: %0.2f, CC: %0.2f", (double)target_speed_ms, (double)filtered_speed_ratio, (double)current_current);
+            if (overshot_target && last_current > 3.5f && ((!motor_at_no_load_target && !motor_slowing_down) || low_speed_domain)) {
+                filtered_speed_ratio -= (filtered_speed_ratio * 0.01f);
+                commands_printf("RT [-%0.1f]: %0.2f, CC: %0.2f", (double)(filtered_speed_ratio * 0.01f), (double)filtered_speed_ratio, (double)current_current);
             } 
             // Localized high-speed emergency micro adjustment upwards (Locked out in low speed domain by application design)
             else if (undershot_target && motor_at_no_load_target && !motor_slowing_down && !low_speed_domain && !is_spinning_up()) {
-                filtered_speed_ratio += 4.0f * target_speed_ms;
-                //commands_printf("Ratio Auto-Trim [+%0.1f]: %0.2f, CC: %0.2f", (double)(target_speed_ms * 2.0f), (double)filtered_speed_ratio, (double)current_current);
+                filtered_speed_ratio += (filtered_speed_ratio * 0.02f);
+                commands_printf("RT [+%0.1f]: %0.2f, CC: %0.2f", (double)(target_speed_ms * 4.0f), (double)filtered_speed_ratio, (double)current_current);
             }
         }
     } 
     // --- 6. CRITICAL ASYNC SAFETY BOUNDARIES ---
-    else if (overshot_cutoff && last_current > 1.5f) {
+    else if (overshot_cutoff && last_current > 3.5f) {
         // Soft launch preparation: smoothly drop ratio during power-off coasting past cut-off speed
         filtered_speed_ratio -= 200.0f; 
-        //commands_printf("Soft Launch Prep [-80.0]: %0.2f", (double)filtered_speed_ratio);
+        commands_printf("OST [-290.0]: %0.2f", (double)filtered_speed_ratio);
         erpm_sum = 0.0f;
         erpm_sample_count = 0;    
     } 
@@ -367,9 +367,9 @@ static void ramp_and_set_pid_speed(float erpm) {
 		pid_speed_set_or_ramping = true;
 		pid_ramp_up_step = 0;
 	}
-	if (pid_ramp_up_step < PID_RAMP_UP_CYCLES) {
+	if (pid_ramp_up_step < WALK_PID_RAMP_UP_CYCLES) {
 		pid_ramp_up_step++;
-		float ramping_target_erpm = utils_map((float)pid_ramp_up_step, 1.0f, (float)PID_RAMP_UP_CYCLES, 900.0f, erpm);
+		float ramping_target_erpm = utils_map((float)pid_ramp_up_step, 1.0f, (float)WALK_PID_RAMP_UP_CYCLES, 900.0f, erpm);
 		mc_interface_set_pid_speed(ramping_target_erpm);
 	} else {
 		mc_interface_set_pid_speed(erpm);
@@ -418,16 +418,15 @@ static THD_FUNCTION(my_thread, arg) {
 	is_running = true;
 
 	// Wait for motor config initialization
-	chThdSleepMilliseconds(500);
+	chThdSleepMilliseconds(800);
 
 	for(;;) {
-		chThdSleepMilliseconds(APP_SLEEP_MS);
+		
 		if (stop_now) {
 			is_running = false;
+			mc_interface_release_motor();
 			return;
 		}
-
-		timeout_reset();
 
 		if (mode != prev_mode) {
 			// reset the limiter on each mode change
@@ -514,6 +513,8 @@ static THD_FUNCTION(my_thread, arg) {
 				}
 			}
 		} 
+		timeout_reset();
+		chThdSleepMilliseconds(APP_SLEEP_MS);
 	}
 }
 
