@@ -47,6 +47,8 @@
 #define ALPHA_FAST            0.5f    // High-responsiveness rate 
 #define ALPHA_SLOW            0.15f    // dampened rate 
 
+#define MOTOR_ACTIVE_THRESHOLD_ERPM 500
+
 #define PAS_SPEED_MS      		   6.94f // 25 km/h
 #define CUTOFF_PAS_SPEED_MS   	   PAS_SPEED_MS * 1.06f  // 6% more than the limit
 #define CLASS12_SPEED_MS           8.89f // 32 km/h
@@ -63,10 +65,18 @@
 #define PID_SPIN_UP_CYCLES		  (PID_SPIN_UP_TIME_MS / APP_SLEEP_MS)
 #define WALK_PID_RAMP_UP_TIME_MS  1200
 #define WALK_PID_RAMP_UP_CYCLES	  (WALK_PID_RAMP_UP_TIME_MS / APP_SLEEP_MS)
-#define SPIN_UP_BLANKING_TIME_MS  500
+#define SPIN_UP_BLANKING_TIME_MS  300
 #define SPIN_UP_BLANKING_CYCLES	  (SPIN_UP_BLANKING_TIME_MS / APP_SLEEP_MS)
 
 #define CUSTOM_SPEED_LIMIT_EEPROM_ADDR    42
+
+//typedef enum {
+//    BELOW_ERPM_THRESHOLD,
+//    SPINNING_UP,
+//    SPINNING_DOWN_UNLOADED,
+//    SPINNING_AT_TARGET_ERPM,
+//	UNDER_LOAD
+//} MotorState;
 
 // Threads
 static THD_FUNCTION(my_thread, arg);
@@ -82,7 +92,7 @@ static volatile bool stop_now = true;
 static volatile bool is_running = false;
 static volatile bool was_pid = false;
 static volatile bool release_motor = false;
-static volatile bool pid_speed_set_or_ramping = false;
+static volatile bool walk_pid_speed_set_or_ramping = false;
 static volatile bool override_adc1 = false;
 static volatile float last_app_pwr;
 static volatile float last_erpm;
@@ -95,7 +105,6 @@ static float cutoff_class12_speed_ms = 0.0f;
 static volatile float max_erpm = 100000.0f;
 
 static float filtered_speed_ratio = (MIN_SPEED_RATIO + MAX_SPEED_RATIO) / 2;
-static float smoothed_speed_ratio = (MIN_SPEED_RATIO + MAX_SPEED_RATIO) / 2;
 
 static volatile EBIKE_MODE_T mode = EBIKE_MODE_COMPLIANT;
 static volatile EBIKE_MODE_T prev_mode = EBIKE_MODE_UNDEFINED;
@@ -183,6 +192,8 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     static int spin_up_blanking_cycles = 0; 
     static float erpm_sum = 0.0f;       
     static int erpm_sample_count = 0;   
+    static float smoothed_speed_ratio = (MIN_SPEED_RATIO + MAX_SPEED_RATIO) / 2;
+	static float last_hardware_ratio = (MIN_SPEED_RATIO + MAX_SPEED_RATIO) / 2;
 
     // --- 1. DATA ACQUISITION ---
     const float current_erpm    = mc_interface_get_rpm();
@@ -195,22 +206,26 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
     }
 
     // --- 2. ENVIRONMENT STATE ANALYSIS ---
-    const float estimated_speed    = current_erpm / filtered_speed_ratio;
-    const bool overshot_target      = (estimated_speed > (target_speed_ms * 1.04f)) || (current_speed > (target_speed_ms * 1.04f));
-    const bool undershot_target     = (estimated_speed < (target_speed_ms * 1.00f)) && (current_speed < (target_speed_ms * 0.98));
+
+    // Physical sensor boundaries (Real vehicle behavior)
+	const float estimated_speed    = current_erpm / last_hardware_ratio;
+	const bool overshot_target      = (estimated_speed > (target_speed_ms * 1.15f)) || (current_speed > (target_speed_ms * 1.05f));
+    const bool undershot_target     = (estimated_speed < target_speed_ms) && current_speed < (target_speed_ms * 0.99f);
     const bool overshot_cutoff      = current_speed > cutoff_speed_ms;
     const bool first_speed_redout   = (prev_speed_ms == 0.0f);
-    const bool motor_slowing_down   = (last_erpm - current_erpm) > 10.0f && current_current < 0.1f;
+    const bool motor_coasting   	= ((last_erpm - current_erpm) > 10.0f) && (fabsf(current_current) < 0.1f);
     const bool sensor_pulse_arrived = speed_diff > 0.0001f;
-	//const bool motor_sudden_unload = ((current_erpm - last_erpm) > 200.0f) && (current_current < 3.0f);
     
     // Dynamic free-wheeling / no-load tracking based on the previous target ERPM loop output
     const float last_target_erpm = target_speed_ms * smoothed_speed_ratio;
     const bool motor_at_no_load_target = (fabsf(current_erpm - last_target_erpm) < (last_target_erpm * 0.05f)) 
                                          && (current_current < 2.7f);
 
+    // Un-commented and active to handle low speed domains cleanly
+    const bool low_speed_domain = (target_speed_ms < SPEED_THRESHOLD_MS);
+
     // --- 3. DYNAMIC FILTER COEFFICIENTS (ALPHA) ---
-    float active_alpha = (target_speed_ms < SPEED_THRESHOLD_MS) ? ALPHA_SLOW : ALPHA_FAST;
+    float active_alpha = low_speed_domain ? ALPHA_SLOW : ALPHA_FAST;
 
     // Proportional Alpha Advance Model
     const float speed_error_pct = fabsf(target_speed_ms - current_speed) / target_speed_ms;
@@ -232,18 +247,19 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
 
     // --- 5. RATIO PROCESSING PIPELINE ---
     if (current_speed > 0.05f && fabsf(current_erpm) > 500.0f) {
-        
-        const bool low_speed_domain  = (target_speed_ms < SPEED_THRESHOLD_MS);
-        const bool can_update_filter = sensor_pulse_arrived && (spin_up_blanking_cycles == 0) && !is_spinning_up()
-                                       && !motor_slowing_down && (!motor_at_no_load_target || low_speed_domain);
-        
+        erpm_sum += current_erpm;
+        erpm_sample_count++;
+
+		const bool can_update_filter = sensor_pulse_arrived && (spin_up_blanking_cycles == 0) && !is_spinning_up()
+                                       && !motor_coasting && !motor_at_no_load_target;
         if (can_update_filter) {
             // Compute true mathematical average of ERPM during this single wheel rotation window
-            const float exact_mean_erpm = (erpm_sample_count > 4) ? (erpm_sum / (float)erpm_sample_count) : current_erpm;
+            const float exact_mean_erpm = (erpm_sample_count > 2) ? (erpm_sum / (float)erpm_sample_count) : current_erpm;
             float raw_speed_ratio = exact_mean_erpm / current_speed;
             
             utils_truncate_number(&raw_speed_ratio, MIN_SPEED_RATIO, MAX_SPEED_RATIO);
             UTILS_LP_FAST(filtered_speed_ratio, raw_speed_ratio, active_alpha);
+			last_hardware_ratio = filtered_speed_ratio;
             
             commands_printf("RU SR:%0.2f, CC:%0.2f, Mean:%0.1f, Alpha:%0.2f", 
                             (double)filtered_speed_ratio, (double)current_current, (double)exact_mean_erpm, (double)active_alpha);
@@ -254,42 +270,34 @@ float calculate_target_erpm(float target_speed_ms, float cutoff_speed_ms) {
             
         } 
         // Flush pipeline while system states are transitioning or free-wheeling without a downshift event
-        else if (spin_up_blanking_cycles > 0 || motor_slowing_down || (motor_at_no_load_target && !undershot_target)) {
+        else if (spin_up_blanking_cycles > 0 || motor_coasting || (motor_at_no_load_target && !undershot_target && !overshot_target)) {
             erpm_sum = 0.0f;
             erpm_sample_count = 0;
-            
         } else {
-            // Safely buffer dead-time samples and run localized micro-adjustments inside the sensor blind zone
-            erpm_sum += current_erpm;
-            erpm_sample_count++;
-            
-            // Localized micro adjustment downwards
-            if (overshot_target && last_current > 3.5f && ((!motor_at_no_load_target && !motor_slowing_down) || low_speed_domain)) {
-                filtered_speed_ratio -= (filtered_speed_ratio * 0.01f);
-                commands_printf("RT [-%0.1f]: %0.2f, CC: %0.2f", (double)(filtered_speed_ratio * 0.01f), (double)filtered_speed_ratio, (double)current_current);
-            } 
-            // Localized high-speed emergency micro adjustment upwards (Locked out in low speed domain by application design)
-            else if (undershot_target && motor_at_no_load_target && !motor_slowing_down && !low_speed_domain && !is_spinning_up()) {
-                filtered_speed_ratio += (filtered_speed_ratio * 0.02f);
-                commands_printf("RT [+%0.1f]: %0.2f, CC: %0.2f", (double)(target_speed_ms * 4.0f), (double)filtered_speed_ratio, (double)current_current);
+			if (overshot_target && ((!motor_at_no_load_target && !motor_coasting) || low_speed_domain)) {
+				float current_load_factor = low_speed_domain ? (current_current / (5.0f + current_current)) : 1.0f;
+				float step_down = target_speed_ms * 0.008f * current_load_factor;
+                utils_truncate_number(&step_down, 0.0001f, 0.02f); 
+
+                filtered_speed_ratio -= (filtered_speed_ratio * step_down);
+                commands_printf("RT [-%0.1f%%]: %0.2f, CC: %0.2f", (double)(step_down * 100.0f), (double)filtered_speed_ratio, (double)current_current);
+            } else if (undershot_target && motor_at_no_load_target && !motor_coasting && !is_spinning_up()) {                
+                float step_up = target_speed_ms * 0.008f;
+                utils_truncate_number(&step_up, 0.002f, 0.02f); 
+                
+                filtered_speed_ratio += (filtered_speed_ratio * step_up);
+                commands_printf("RT [+%0.2f%%]: %0.2f, CC: %0.2f", (double)(step_up * 100.0f), (double)filtered_speed_ratio, (double)current_current);
             }
         }
     } 
     // --- 6. CRITICAL ASYNC SAFETY BOUNDARIES ---
     else if (overshot_cutoff && last_current > 3.5f) {
         // Soft launch preparation: smoothly drop ratio during power-off coasting past cut-off speed
-        filtered_speed_ratio -= 200.0f; 
-        commands_printf("OST [-290.0]: %0.2f", (double)filtered_speed_ratio);
+        filtered_speed_ratio -= (filtered_speed_ratio * 0.1f); 
+        commands_printf("OST [-%0.1f]: %0.2f", (double)(filtered_speed_ratio * 0.1f), (double)filtered_speed_ratio);
         erpm_sum = 0.0f;
         erpm_sample_count = 0;    
     } 
-    //else if (current_speed < 0.05f && fabsf(current_erpm) > 500.0f) {
-        // Hard standstill anchor to handle zero speed transitions cleanly
-        //filtered_speed_ratio = 2.0f * MIN_SPEED_RATIO; 
-        //smoothed_speed_ratio = MIN_SPEED_RATIO; 
-        //erpm_sum = 0.0f;
-        //erpm_sample_count = 0;    
-    //}
     
     // --- 7. SIGNAL SMOOTHING & OUTPUT GENERATION ---
     utils_truncate_number(&filtered_speed_ratio, MIN_SPEED_RATIO, MAX_SPEED_RATIO);
@@ -363,8 +371,8 @@ void calculate_and_set_pas_max_erpm(float app_adc_pwr) {
 }
 
 static void ramp_and_set_pid_speed(float erpm) {
-	if (!pid_speed_set_or_ramping) {
-		pid_speed_set_or_ramping = true;
+	if (!walk_pid_speed_set_or_ramping) {
+		walk_pid_speed_set_or_ramping = true;
 		pid_ramp_up_step = 0;
 	}
 	if (pid_ramp_up_step < WALK_PID_RAMP_UP_CYCLES) {
@@ -439,11 +447,11 @@ static THD_FUNCTION(my_thread, arg) {
 		float app_adc_pwr = app_adc_get_decoded_level();
 		if (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1 
 			|| mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3) {
-			bool motor_active = app_pas_pwr > 0.0 || is_spinning_up() || pid_speed_set_or_ramping 
+			bool motor_active = app_pas_pwr > 0.0 || is_spinning_up() || walk_pid_speed_set_or_ramping 
 								|| (mc_interface_get_rpm() > 100.0f) || (fabsf(mc_interface_get_tot_current()) > 0.2f);
-			if (app_pas_pwr > 0.0 && !pid_speed_set_or_ramping) {
+			if (app_pas_pwr > 0.0 && !walk_pid_speed_set_or_ramping) {
 				calculate_and_set_pas_max_erpm(app_adc_pwr);
-			} else if (app_adc_pwr > 0.1 && (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1)) {
+			} else if (app_adc_pwr > 0.05 && (mode == EBIKE_MODE_COMPLIANT || mode == EBIKE_MODE_CLASS1)) {
 				app_disable_output(DISABLE_APP_OUTPUT_MS);
 				float erpm = calculate_target_erpm(THROTTLE_SPEED_MS, CUTOFF_THROTTLE_SPEED_MS);
 				if (erpm < ERPM_STOP_THRESHOLD) {
@@ -452,7 +460,7 @@ static THD_FUNCTION(my_thread, arg) {
 				}
 				utils_truncate_number(&erpm, 900, 4000);
 				ramp_and_set_pid_speed(erpm);
-			} else if (app_adc_pwr > 0.1 && (mc_interface_get_speed() == 0.0 || pid_speed_set_or_ramping) 
+			} else if (app_adc_pwr > 0.05 && (mc_interface_get_speed() == 0.0 || walk_pid_speed_set_or_ramping) 
 						&& (mode == EBIKE_MODE_CLASS2 || mode == EBIKE_MODE_CLASS3)) {
 				app_disable_output(DISABLE_APP_OUTPUT_MS);
 				ramp_and_set_pid_speed(2500);
@@ -467,9 +475,9 @@ static THD_FUNCTION(my_thread, arg) {
 					spin_up_if_scheduled(erpm);
 					set_max_erpm(erpm);
 				}
-			} else if (was_pid || pid_speed_set_or_ramping || is_spinning_up()) {
+			} else if (was_pid || walk_pid_speed_set_or_ramping || is_spinning_up()) {
 				mc_interface_release_motor();
-				pid_speed_set_or_ramping = false;
+				walk_pid_speed_set_or_ramping = false;
 				cancel_spin_up();
 			} 
 		} else if (mode == EBIKE_MODE_UNRESTRICTED_PLUS) {
@@ -525,9 +533,9 @@ float app_custom_max_erpm(void) {
 // Callback function for the terminal command with arguments.
 static void ebike_test(int argc, const char **argv) {
 	(void)argc; (void)argv;
-	commands_printf("ADC1: %.2f V SR: %.2f MODE %d ERPM: %.2f PWR: %.2f PID: %d PAS: %.2f",
+	commands_printf("ADC1: %.2f V FSR: %.2f MODE %d ERPM: %.2f PWR: %.2f PID: %d PAS: %.2f",
 		(double)ADC_VOLTS(ADC_IND_EXT), (double)filtered_speed_ratio, mode, 
-		(double) mc_interface_get_rpm(), (double) last_app_pwr, (double) pid_speed_set_or_ramping,
+		(double) mc_interface_get_rpm(), (double) last_app_pwr, (double) walk_pid_speed_set_or_ramping,
 		(double) app_pas_get_current_target_rel());
 }
 

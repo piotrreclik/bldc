@@ -109,7 +109,7 @@
 #define MCCONF_FOC_MOTOR_R 0.041
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01844
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01822
 
 // Observer Gain (x1M)
 #define MCCONF_FOC_OBSERVER_GAIN 2330000
@@ -307,7 +307,7 @@
 #define MCCONF_SI_BATTERY_AH 15
 
 // Motor No Load Current
-#define MCCONF_SI_MOTOR_NL_CURRENT 0.5
+#define MCCONF_SI_MOTOR_NL_CURRENT 2.5
 
 // MCCONF_BBSHD_H_
 #endif
