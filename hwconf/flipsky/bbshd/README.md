@@ -134,14 +134,6 @@ This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds
 * Setting your custom speed limit for CLASS2 (both pas and throttle) and CLASS3 throttle
     * In VESC mobile app go to terminal tab, input a command `set_custom_speed x` where x is the desired speed in km/h
 
-### VESC core changes
-* PAS based on interrupts
-    * Configurable engagement angle
-    * Configurable max cadence RPM limit in restricted modes
-* Max wattage and max battery current scaled with max current scale
-* Field weakening scaled with max current scale
-* ERPM max limit based on filtered rather than raw foc erpm
-
 ### Changelog
 * v1 - not so great, bad hsv factor, heat buildup, known bug with saving the motor configuration in limited modes
 * v2 - better, still not ideal 
