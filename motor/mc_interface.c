@@ -2424,7 +2424,9 @@ static void update_override_limits(volatile motor_if_state_t *motor, volatile mc
 	} else if (rpm_slow > (rpm_pos_cut_end - 0.1)) {
 		lo_max_rpm = 0.0;
 	} else {
-		lo_max_rpm = utils_map(rpm_slow, rpm_pos_cut_start, rpm_pos_cut_end, l_current_max_tmp, 0.0);
+		float norm = (rpm_slow - rpm_pos_cut_start) / (rpm_pos_cut_end - rpm_pos_cut_start);
+		float curve_multiplier = 1.0f - (norm * norm);
+		lo_max_rpm = l_current_max_tmp * curve_multiplier;
 	}
 
 	// RPM min

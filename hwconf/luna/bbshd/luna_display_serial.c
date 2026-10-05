@@ -328,7 +328,7 @@ static void set_assist_level(uint8_t assist_code) {
     volatile mc_configuration *mcconf = (volatile mc_configuration*) mc_interface_get_configuration();
 
 	switch (assist_code) {
-		case PAS_LEVEL_0: current_scale = 0.0; break;
+		case PAS_LEVEL_0: current_scale = 0.02; break;
 		case PAS_LEVEL_1: current_scale = 1.0 / 9.0; break;
 		case PAS_LEVEL_2: current_scale = 2.0 / 9.0; break;
 		case PAS_LEVEL_3: current_scale = 2.9 / 9.0; break;

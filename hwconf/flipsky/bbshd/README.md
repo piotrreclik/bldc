@@ -22,8 +22,8 @@ This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds
     * US CLASS 1 -> PAS 32 kmh, throttle up to 6kmh (walk assist)
     * US CLASS 2 -> PAS 32 kmh, throttle 32 kmh / walk assist from dead stop
     * US CLASS 3 -> PAS 45 kmh, throttle 32 kmh / walk assist from dead stop
-    * UNLIMITED -> full power as a bare VESC FW would be
-    * UNLIMITED+ -> full power + freewheeling / cruise control
+    * UNLIMITED -> no limits as a bare VESC FW would be
+    * UNLIMITED+ -> no limits + freewheeling / cruise control
 
 ## How to use it?
 
@@ -97,11 +97,57 @@ This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds
             * Compare the results with the preconfigured values on Mapping screen
             * Make sure the mapping start is at least 0.03 mV higher than the minimum measured value
             * Mapping end should be few mV lower than the maximum measured value
+    * Set up your wheel diameter
+        * Additional Info -> Wheel diameter
 * Test the bike on a stand!
     * Spin the cranks to check if PAS works
     * Test the throttle
     * Check if the speed sensor works
 * If all went well go out and ride your damn bike!
+
+### Operation manual
+
+* Changing modes
+    * Engage lights (for most Bafang UART displays by long pressing the + button) 
+    * Disengage the lights (this is the moment you actually preselect the desired mode)
+        * 0 -> EPAC
+        * 1 -> CLASS1 
+        * 2 -> CLASS2
+        * 3 -> CLASS3
+        * 4 -> UNLIMITED
+        * 5 -> UNLIMITED+
+    * If your display uses 9 PAS modes, 1 and 2 is class1, 3 and 4 class2, 5 and 6 class3, 7 and 8 unlimited, 9 unlimited+  
+    * Engage the walk assist (on most displays by holding the - button, engage it for a short period of time, no more than a second or so) 
+    * Going back to EPAC from any mode can be performed without engaging and disengaging lights. Just engage the walk assist.
+* Toggle motor temp on display
+    * Set the currently used mode one more time by following the above sequence
+* Set your desired cadence limit
+    * In the VESC mobile go to AppCfg->PAS->Pedal RPM End and set your desired value
+* Set your desired PAS engagement angle
+    * In the VESC mobile go to AppCfg->PAS->Pedal RPM Start
+        * The number before decimal point is your actual cadence RPM when the PAS will engage
+        * The number after the decimal is your configurable engagement angle where x.1 mean almost instant and x.9 means 180 degrees of crank rotation
+* Engaging walk assist
+    * In EPAC and CLASS1 walk assist is always available on the throttle
+    * In CLASS2 and CLASS3 walk assist is engaged only if the display shows 0 speed. Pay special attention to this, as if you push the throttle when the display didn't reset to 0 you will get full power and rpms. This will launch your bike unexpectedly.
+    * In UNLIMITED and UNLIMITED+ there is no walk assist available
+* Setting your custom speed limit for CLASS2 (both pas and throttle) and CLASS3 throttle
+    * In VESC mobile app go to terminal tab, input a command `set_custom_speed x` where x is the desired speed in km/h
+
+### VESC core changes
+* PAS based on interrupts
+    * Configurable engagement angle
+    * Configurable max cadence RPM limit in restricted modes
+* Max wattage and max battery current scaled with max current scale
+* Field weakening scaled with max current scale
+* ERPM max limit based on filtered rather than raw foc erpm
+
+### Changelog
+* v1 - not so great, bad hsv factor, heat buildup, known bug with saving the motor configuration in limited modes
+* v2 - better, still not ideal 
+    * fixed known bugs including the one mentioned in v1
+    * the gear ratio calculation algorithm sometimes performs wrong corrections
+    * colder tune (decreased flux linkage and lq-ld diff) 
 
 
 

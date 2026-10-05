@@ -41,6 +41,7 @@ void app_adc_start(bool use_rx_tx);
 void app_adc_stop(void);
 void app_adc_configure(adc_config *conf);
 float app_adc_get_decoded_level(void);
+float app_adc_get_direct_decoded_level(void);
 float app_adc_get_voltage(void);
 float app_adc_get_decoded_level2(void);
 float app_adc_get_voltage2(void);
@@ -81,7 +82,10 @@ bool app_pas_is_running(void);
 void app_pas_configure(pas_config *conf);
 float app_pas_get_current_target_rel(void);
 float app_pas_get_pedal_rpm(void);
+bool app_pas_is_engaged(void);
 void app_pas_set_current_sub_scaling(float current_sub_scaling);
+void app_pas_detach_pas(int detach);
+void app_pas_pas_override(float val);
 
 // Custom apps
 void app_custom_start(void);

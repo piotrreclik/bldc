@@ -16,7 +16,7 @@
 #define MCCONF_SENSOR_MODE 0
 
 // Motor Current Max
-#define MCCONF_L_CURRENT_MAX 82.0
+#define MCCONF_L_CURRENT_MAX 87.0
 
 // Motor Current Max Brake
 #define MCCONF_L_CURRENT_MIN -20
@@ -28,7 +28,7 @@
 #define MCCONF_L_IN_CURRENT_MIN -20
 
 // Input Current Limit Map Start
-#define MCCONF_L_IN_CURRENT_MAP_START 0.9
+#define MCCONF_L_IN_CURRENT_MAP_START 0.85
 
 // Input Current Map Filter
 #define MCCONF_L_IN_CURRENT_MAP_FILTER 0.005
@@ -40,19 +40,13 @@
 #define MCCONF_L_RPM_MIN -4200
 
 // ERPM Limit Start
-#define MCCONF_L_RPM_START 0.8
+#define MCCONF_L_RPM_START 0.85
 
 // Minimum Input Voltage
 #define MCCONF_L_MIN_VOLTAGE 12
 
 // Maximum Input Voltage
 #define MCCONF_L_MAX_VOLTAGE 85
-
-// Battery Voltage Regen Cutoff Start
-#define MCCONF_L_BATTERY_REGEN_CUT_START 1000
-
-// Battery Voltage Regen Cutoff End
-#define MCCONF_L_BATTERY_REGEN_CUT_END 1100
 
 // Slow ABS Current Limit
 #define MCCONF_L_SLOW_ABS_OVERCURRENT 0
@@ -91,7 +85,7 @@
 #define MCCONF_FOC_CURRENT_KI 39
 
 // Zero Vector Frequency
-#define MCCONF_FOC_F_ZV 30000
+#define MCCONF_FOC_F_ZV 27000
 
 // Dead Time Compensation
 #define MCCONF_FOC_DT_US 0.14
@@ -100,19 +94,19 @@
 #define MCCONF_FOC_SENSOR_MODE 2
 
 // Motor Inductance (L)
-#define MCCONF_FOC_MOTOR_L 0.000223458
+#define MCCONF_FOC_MOTOR_L 0.00022
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000038
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000032
 
 // Motor Resistance (R)
-#define MCCONF_FOC_MOTOR_R 0.041
+#define MCCONF_FOC_MOTOR_R 0.039
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01822
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01818
 
 // Observer Gain (x1M)
-#define MCCONF_FOC_OBSERVER_GAIN 2330000
+#define MCCONF_FOC_OBSERVER_GAIN 770000
 
 // Observer Gain At Minimum Duty
 #define MCCONF_FOC_OBSERVER_GAIN_SLOW 0.1
@@ -139,10 +133,10 @@
 #define MCCONF_FOC_SL_OPENLOOP_TIME 0.1
 
 // Openloop Current Boost
-#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 2
+#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 3
 
 // Openloop Current Max
-#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 7
+#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 10
 
 // Hall Table [1]
 #define MCCONF_FOC_HALL_TAB_1 100
@@ -166,7 +160,7 @@
 #define MCCONF_FOC_HALL_INTERP_ERPM 250
 
 // Sensored ERPM Start
-#define MCCONF_FOC_SL_ERPM_START 1200
+#define MCCONF_FOC_SL_ERPM_START 1500
 
 // Sensorless ERPM
 #define MCCONF_FOC_SL_ERPM 3000
@@ -181,13 +175,13 @@
 #define MCCONF_FOC_SAT_COMP_MODE 3 //lambda and factor
 
 // Saturation Compensation Factor
-#define MCCONF_FOC_SAT_COMP 0.22
+#define MCCONF_FOC_SAT_COMP 0.2
 
 // Temp Comp
 #define MCCONF_FOC_TEMP_COMP 1
 
 // Temp Comp Base Temp
-#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 25.0
+#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 20.0
 
 // Current Filter Constant
 #define MCCONF_FOC_CURRENT_FILTER_CONST 0.1

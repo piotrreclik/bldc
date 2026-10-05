@@ -16,7 +16,7 @@
 #define MCCONF_L_BATTERY_CUT_END 42
 
 // Max ERPM
-#define MCCONF_L_RPM_MAX 28000
+#define MCCONF_L_RPM_MAX 31000
 
 // Maximum Wattage
 #define MCCONF_L_WATT_MAX 3000

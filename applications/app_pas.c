@@ -59,6 +59,8 @@ static volatile float ms_without_power = 0.0;
 static volatile float max_inactivity_time = 0.0;
 static volatile float direction_conf = 0.0;
 static volatile float pedal_rpm = 0;
+static volatile float pas_override = 0.0;
+static volatile int pas_detached = 0;
 static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
@@ -167,6 +169,21 @@ float app_pas_get_current_target_rel(void) {
 
 float app_pas_get_pedal_rpm(void) {
 	return pedal_rpm;
+}
+
+void app_pas_detach_pas(int detach) {
+	pas_detached = detach;
+	timeout_reset();
+}
+
+void app_pas_pas_override(float val) {
+	utils_truncate_number(&val, 0, config.current_scaling * sub_scaling);
+	pas_override = val;
+	timeout_reset();
+}
+
+bool app_pas_is_engaged() {
+	return pedal_rpm > pedal_rpm_start;
 }
 
 void pas_pin_isr(void) {
@@ -389,6 +406,10 @@ static THD_FUNCTION(pas_thread, arg) {
 #endif
 			default:
 				break;
+		}
+
+		if (pas_detached > 0) {
+			output = pas_override;
 		}
 
 		// Apply ramping

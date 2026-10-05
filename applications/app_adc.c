@@ -160,6 +160,37 @@ bool app_adc_range_ok(void) {
 	return range_ok;
 }
 
+float map_read_voltage(float voltage) {
+	float res = 0.0;
+	switch (config.ctrl_type) {
+		case ADC_CTRL_TYPE_CURRENT_REV_CENTER:
+		case ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_CENTER:
+		case ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_CENTER:
+		case ADC_CTRL_TYPE_DUTY_REV_CENTER:
+		case ADC_CTRL_TYPE_PID_REV_CENTER:
+			// Mapping with respect to center voltage
+			if (voltage < config.voltage_center) {
+				res = utils_map(voltage, config.voltage_start,
+						config.voltage_center, 0.0, 0.5);
+			} else {
+				res = utils_map(voltage, config.voltage_center,
+						config.voltage_end, 0.5, 1.0);
+			}
+			break;
+		default:
+			// Linear mapping between the start and end voltage
+			res = utils_map(voltage, config.voltage_start, config.voltage_end, 0.0, 1.0);
+			break;	
+		}
+	utils_truncate_number(&res, 0.0, 1.0);
+	return res;
+}
+
+float app_adc_get_direct_decoded_level() {
+	float pwr = ADC_VOLTS(ADC_IND_EXT);
+	return map_read_voltage(pwr);
+}
+
 static THD_FUNCTION(adc_thread, arg) {
 	(void)arg;
 
@@ -207,27 +238,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		range_ok = read_voltage >= config.voltage_min && read_voltage <= config.voltage_max;
 
 		// Map the read voltage
-		switch (config.ctrl_type) {
-		case ADC_CTRL_TYPE_CURRENT_REV_CENTER:
-		case ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_CENTER:
-		case ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_CENTER:
-		case ADC_CTRL_TYPE_DUTY_REV_CENTER:
-		case ADC_CTRL_TYPE_PID_REV_CENTER:
-			// Mapping with respect to center voltage
-			if (pwr < config.voltage_center) {
-				pwr = utils_map(pwr, config.voltage_start,
-						config.voltage_center, 0.0, 0.5);
-			} else {
-				pwr = utils_map(pwr, config.voltage_center,
-						config.voltage_end, 0.5, 1.0);
-			}
-			break;
-
-		default:
-			// Linear mapping between the start and end voltage
-			pwr = utils_map(pwr, config.voltage_start, config.voltage_end, 0.0, 1.0);
-			break;
-		}
+		pwr = map_read_voltage(pwr);
 
 		// Optionally apply a filter
 		static float pwr_filter = 0.0;

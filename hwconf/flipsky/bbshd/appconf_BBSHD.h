@@ -274,7 +274,7 @@
 #define APPCONF_PAS_PEDAL_RPM_START 6.7
 
 // Pedal RPM End
-#define APPCONF_PAS_PEDAL_RPM_END 75
+#define APPCONF_PAS_PEDAL_RPM_END 66
 
 // Invert Pedal Direction
 #define APPCONF_PAS_INVERT_PEDAL_DIRECTION 0
@@ -286,7 +286,7 @@
 #define APPCONF_PAS_USE_FILTER 1
 
 // Positive Ramping Time
-#define APPCONF_PAS_RAMP_TIME_POS 0.9
+#define APPCONF_PAS_RAMP_TIME_POS 0.8
 
 // Negative Ramping Time
 #define APPCONF_PAS_RAMP_TIME_NEG 0.3
