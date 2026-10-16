@@ -140,6 +140,7 @@ This is a VESC based firmware to control your Flipsky BBSHD ebike build. It adds
     * fixed known bugs including the one mentioned in v1
     * the gear ratio calculation algorithm sometimes performs wrong corrections
     * colder tune (decreased flux linkage and lq-ld diff) 
+* v2.1 - tune improvements (more stable duty cycle, less heat)
 
 
 
