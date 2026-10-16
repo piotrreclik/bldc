@@ -460,7 +460,11 @@ static float get_max_pas_erpm(void) {
 
 static void set_max_erpm(float lo_max_erpm) {
 	utils_truncate_number(&lo_max_erpm, 1500, mc_interface_get_configuration()->l_max_erpm);
-	max_erpm = lo_max_erpm;
+	if (fabsf(lo_max_erpm - max_erpm) > 200.0f) {
+		UTILS_LP_FAST(max_erpm, lo_max_erpm, 0.1f);
+	} else {
+		max_erpm = lo_max_erpm;
+	}
 }
 
 static void calculate_and_set_pas_max_erpm(float app_adc_pwr) {
@@ -483,21 +487,34 @@ static void calculate_and_set_pas_max_erpm(float app_adc_pwr) {
 		return;
 	} 
 
-	// in pedal modes limit the erpms to equal roughly 120 crank cadence
-	// if throttle is pressed ramp the limit rpm
+	// in pedal modes limit the erpms to the max cadence from pas config
 	float pas_max_erpm_limit_start = get_max_pas_erpm();
-	float pas_max_erpm = utils_map(app_adc_pwr, 0.03f, 1.0f, pas_max_erpm_limit_start, target_speed_max_erpm);
+	// double the limit on full throttle
+	float pas_max_erpm = app_adc_pwr < 0.5f ? 
+		utils_map(app_adc_pwr, 0.0f, 0.5f, pas_max_erpm_limit_start, (1.5f * pas_max_erpm_limit_start)) :
+		utils_map(app_adc_pwr, 0.5f, 1.0f, (1.5f * pas_max_erpm_limit_start), target_speed_max_erpm);
 	utils_truncate_number(&pas_max_erpm, pas_max_erpm_limit_start, target_speed_max_erpm);
 
-	if (mode != EBIKE_MODE_COMPLIANT && mode != EBIKE_MODE_CLASS1) {
+	//if (mode != EBIKE_MODE_COMPLIANT && mode != EBIKE_MODE_CLASS1) {
 		// for the classes where throttle is allowed if the rpm is already above the pas limit and throttle is pushed just ignore it
-		pas_max_erpm = (app_adc_pwr > 0.03 && mc_interface_get_rpm() > (pas_max_erpm + 400)) ? target_speed_max_erpm : pas_max_erpm;
-	}
+		//pas_max_erpm = (app_adc_pwr > 0.03 && mc_interface_get_rpm() > (pas_max_erpm + 400)) ? target_speed_max_erpm : pas_max_erpm;
+	//}
 	
 	if (filtered_pas_max_erpm < 0.0f) {
     	filtered_pas_max_erpm = pas_max_erpm;
 	}
-	utils_step_towards(&filtered_pas_max_erpm, pas_max_erpm, pas_max_erpm > filtered_pas_max_erpm? 100.0f : 40.0f);
+	float filter_step = 0;
+	if (pas_max_erpm > filtered_pas_max_erpm) {
+		// immediate ramp up of allowed erpms
+		filter_step = pas_max_erpm - filtered_pas_max_erpm;	
+	} else if (mc_interface_get_rpm() < filtered_pas_max_erpm) {
+		// immediate ramp down the allowed rpm if the motor rpm is below allowed value
+		filter_step = filtered_pas_max_erpm - pas_max_erpm;
+	} else {
+		// gradual ramp down if the motor rpm is higher than allowed rpm to avoid sudden power cut
+		filter_step = 40.0f;
+	}
+	utils_step_towards(&filtered_pas_max_erpm, pas_max_erpm, filter_step);
 	utils_truncate_number(&target_speed_max_erpm, 1500, filtered_pas_max_erpm);
 	set_max_erpm(target_speed_max_erpm);
 	//spin_up_if_scheduled(target_speed_max_erpm);
@@ -636,6 +653,7 @@ static THD_FUNCTION(my_thread, arg) {
 				} else {
 					//spin_up_if_scheduled(erpm);
 					set_max_erpm(erpm);
+					filtered_pas_max_erpm = erpm;
 					reattach_adc1_if_detached();
 				}
 			} else if (was_pid || walk_pid_speed_set_or_ramping) { // || is_spinning_up()) {

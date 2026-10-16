@@ -61,7 +61,7 @@
 #define MCCONF_L_LIM_TEMP_MOTOR_START 95
 
 // Motor Temp Cutoff End
-#define MCCONF_L_LIM_TEMP_MOTOR_END 105
+#define MCCONF_L_LIM_TEMP_MOTOR_END 100
 
 // Acceleration Temperature Decrease
 #define MCCONF_L_LIM_TEMP_ACCEL_DEC 0.02
@@ -79,13 +79,13 @@
 #define MCCONF_L_DUTY_START 1
 
 // Current KP
-#define MCCONF_FOC_CURRENT_KP 0.22
+#define MCCONF_FOC_CURRENT_KP 0.35
 
 // Current KI
-#define MCCONF_FOC_CURRENT_KI 39
+#define MCCONF_FOC_CURRENT_KI 85.55
 
 // Zero Vector Frequency
-#define MCCONF_FOC_F_ZV 27000
+#define MCCONF_FOC_F_ZV 20000
 
 // Dead Time Compensation
 #define MCCONF_FOC_DT_US 0.14
@@ -94,16 +94,16 @@
 #define MCCONF_FOC_SENSOR_MODE 2
 
 // Motor Inductance (L)
-#define MCCONF_FOC_MOTOR_L 0.00022
+#define MCCONF_FOC_MOTOR_L 0.0001444
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 0.000032
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 3.53e-05
 
 // Motor Resistance (R)
-#define MCCONF_FOC_MOTOR_R 0.039
+#define MCCONF_FOC_MOTOR_R 0.042
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.01818
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.0195
 
 // Observer Gain (x1M)
 #define MCCONF_FOC_OBSERVER_GAIN 770000
@@ -175,13 +175,13 @@
 #define MCCONF_FOC_SAT_COMP_MODE 3 //lambda and factor
 
 // Saturation Compensation Factor
-#define MCCONF_FOC_SAT_COMP 0.2
+#define MCCONF_FOC_SAT_COMP 0.2 // saturation compensation for ortega observevr only, foc doesnt care
 
 // Temp Comp
 #define MCCONF_FOC_TEMP_COMP 1
 
 // Temp Comp Base Temp
-#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 20.0
+#define MCCONF_FOC_TEMP_COMP_BASE_TEMP 25.0
 
 // Current Filter Constant
 #define MCCONF_FOC_CURRENT_FILTER_CONST 0.1
@@ -208,7 +208,7 @@
 #define MCCONF_FOC_MTPA_MODE 2 // IQ Measured
 
 // Field Weakening Duty Start
-#define MCCONF_FOC_FW_DUTY_START 0.85
+#define MCCONF_FOC_FW_DUTY_START 0.888
 
 // Field Weakening Ramp Time
 #define MCCONF_FOC_FW_RAMP_TIME 0.2
