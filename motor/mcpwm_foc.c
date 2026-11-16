@@ -58,6 +58,7 @@ static void stop_pwm_hw(motor_all_state_t *motor);
 static void start_pwm_hw(motor_all_state_t *motor);
 static void full_brake_hw(motor_all_state_t *motor);
 static void terminal_plot_hfi(int argc, const char **argv);
+static void terminal_pll_dyn_status(int argc, const char **argv);
 static void timer_update(motor_all_state_t *motor, float dt);
 static void hfi_update(volatile motor_all_state_t *motor, float dt);
 
@@ -588,6 +589,12 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 			"Enable HFI plotting. 0: off, 1: DFT, 2: Raw",
 			"[en]",
 			terminal_plot_hfi);
+
+	terminal_register_command_callback(
+			"foc_pll_dyn_status",
+			"Print current ERPM and dynamic PLL Kp/Ki gains",
+			"",
+			terminal_pll_dyn_status);
 
 	m_init_done = true;
 }
@@ -3814,8 +3821,10 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 		break;
 	};
 
+	foc_update_dynamic_pll_gains(motor_now, conf_now);
+
 	// Run PLL for speed estimation
-	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, conf_now);
+	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, motor_now);
 
 	FOC_PROFILE_LINE_FINE();
 
@@ -5415,5 +5424,21 @@ static void terminal_plot_hfi(int argc, const char **argv) {
 		}
 	} else {
 		commands_printf("This command requires one argument.\n");
+	}
+}
+
+static void terminal_pll_dyn_status(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+    
+	volatile motor_all_state_t *motor = get_motor_now();
+	if (motor) {
+		float current_erpm = RADPS2RPM_f(motor->m_pll_speed);
+		commands_printf("--- Dynamic PLL Status ---");
+		commands_printf("ERPM:        %.1f", (double)current_erpm);
+		commands_printf("PLL Kp Dyn:  %.2f", (double)motor->foc_pll_kp_dyn);
+		commands_printf("PLL Ki Dyn:  %.2f", (double)motor->foc_pll_ki_dyn);
+	} else {
+		commands_printf("Motor state pointer is NULL.");
 	}
 }

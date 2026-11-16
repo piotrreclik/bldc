@@ -97,13 +97,13 @@
 #define MCCONF_FOC_MOTOR_L 0.0001444
 
 // Motor Inductance Difference (Lq - Ld)
-#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 3.53e-05
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF 1.77e-05
 
 // Motor Resistance (R)
 #define MCCONF_FOC_MOTOR_R 0.042
 
 // Motor Flux Linkage (?)
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.0195
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE 0.02
 
 // Observer Gain (x1M)
 #define MCCONF_FOC_OBSERVER_GAIN 770000
@@ -133,10 +133,10 @@
 #define MCCONF_FOC_SL_OPENLOOP_TIME 0.1
 
 // Openloop Current Boost
-#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 3
+#define MCCONF_FOC_SL_OPENLOOP_BOOST_Q 1
 
 // Openloop Current Max
-#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 10
+#define MCCONF_FOC_SL_OPENLOOP_MAX_Q 5
 
 // Hall Table [1]
 #define MCCONF_FOC_HALL_TAB_1 100

@@ -37,6 +37,8 @@ static volatile bool i2c_running = false;
 static volatile bool motor_has_PTC_sensor;
 
 //Methods
+static void terminal_cmd_set_initial_assist_level(int argc, const char **argv);
+static void terminal_cmd_read_initial_assist_level(int argc, const char **argv);
 static void terminal_cmd_set_bbshd_has_PTC_sensor(int argc, const char **argv);
 static void terminal_cmd_set_bbshd_use_fixed_throttle_level(int argc, const char **argv);
 
@@ -131,7 +133,18 @@ void hw_init_gpio(void) {
 	palSetPadMode(GPIOC, 4, PAL_MODE_INPUT_ANALOG);
 	palSetPadMode(GPIOC, 5, PAL_MODE_INPUT_ANALOG);
 
-        
+	terminal_register_command_callback(
+		"set_initial_assist_level",
+		"Set initial assist level [0 - 9].",
+		0,
+		terminal_cmd_set_initial_assist_level);
+    
+	terminal_register_command_callback(
+			"read_initial_assist_level",
+			"Read initial assist level.",
+			0,
+			terminal_cmd_read_initial_assist_level);        
+
 	terminal_register_command_callback(
 			"set_motor_temp_sensor",
 			"Usage: set_motor_temp_sensor [NTC or PTC]",
@@ -329,6 +342,48 @@ float hw_get_distance(void) {
 
 float hw_get_distance_abs(void) {
 	return trip_odometer;
+}
+
+static void terminal_cmd_set_initial_assist_level(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+
+	eeprom_var initial_assist_level;
+	if( argc == 2 ) {
+		sscanf(argv[1], "%i", (int*) &(initial_assist_level.as_i32));
+
+		// Store data in eeprom
+		conf_general_store_eeprom_var_hw(&initial_assist_level, EEPROM_ADDR_INITIAL_ASSIST_LEVEL);
+
+		//read back written data
+		int32_t assist_level = hw_read_initial_assist_level();
+
+		if(assist_level == initial_assist_level.as_i32) {
+			commands_printf("BBSHD initial assist level set to %d", assist_level);
+		}
+		else {
+			commands_printf("Error storing EEPROM data.");
+		}
+	}
+	else {
+		commands_printf("1 argument required, integer from 0 to 9. Here are some examples:");
+		commands_printf("set_initial_assist_level 0");
+		commands_printf("set_initial_assist_level 1");
+		commands_printf("set_initial_assist_level 4");
+		commands_printf("set_initial_assist_level 9");
+		commands_printf(" ");
+	}
+	commands_printf(" ");
+	return;
+}
+
+static void terminal_cmd_read_initial_assist_level(int argc, const char **argv) {
+	(void)argc;
+	(void)argv;
+
+	commands_printf("BBSHD initial assist level is set at %i", hw_read_initial_assist_level());
+	commands_printf(" ");
+	return;
 }
 
 int8_t hw_read_initial_assist_level(void) {

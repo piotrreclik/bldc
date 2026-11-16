@@ -633,7 +633,7 @@ static void serial_display_check_rx(void){
 
 		if (display_uart_is_running) {
 			msg_t res = sdGetTimeout(&HW_UART_DEV, TIME_IMMEDIATE);
-			if (res != MSG_TIMEOUT) {
+			if (res >= MSG_OK) {
 				serial_display_byte_process(res);
 				rx = true;
 			}
@@ -643,10 +643,10 @@ static void serial_display_check_rx(void){
 
 static THD_FUNCTION(display_process_thread, arg) {
 	(void)arg;
-	chRegSetThreadName("Luna serial display");
+	chRegSetThreadName("Luna SD");
 
 	event_listener_t el;
-	chEvtRegisterMaskWithFlags(&HW_UART_DEV.event, &el, EVENT_MASK(0), CHN_INPUT_AVAILABLE);
+	chEvtRegisterMask(&HW_UART_DEV.event, &el, EVENT_MASK(0));
 
     // Wait for motor config initialization
 	chThdSleepMilliseconds(500);
@@ -655,9 +655,14 @@ static THD_FUNCTION(display_process_thread, arg) {
 	set_assist_level(pas_level);
 
 	for(;;) {
-		chEvtWaitAnyTimeout(ALL_EVENTS, ST2MS(100));
-		serial_display_check_rx();
-		set_assist_level(pas_level); //assert periodically to make sure changes are commited when a new motor config is written
+		eventmask_t evt = chEvtWaitAnyTimeout(EVENT_MASK(0), MS2ST(100));
+		if (evt & EVENT_MASK(0)) {
+			eventflags_t flags = chEvtGetAndClearFlags(&el);
+			if (flags & CHN_INPUT_AVAILABLE) {
+				serial_display_check_rx();
+			}
+		}
+		set_assist_level(pas_level);
 	}
 }
 #endif

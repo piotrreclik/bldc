@@ -245,13 +245,17 @@ typedef struct {
 	float p_duty_norm;
 	float p_fs;
 	float p_dt;
+
+	//Dynamic pll gains
+	float foc_pll_kp_dyn;
+	float foc_pll_ki_dyn;
 } motor_all_state_t;
 
 // Functions
 void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_beta,
 		float dt, observer_state *state, float *phase, motor_all_state_t *motor);
 void foc_pll_run(float phase, float dt, float *phase_var,
-		float *speed_var, mc_configuration *conf);
+		float *speed_var, motor_all_state_t *motor);
 void foc_svm(float alpha, float beta, float max_mod, uint32_t PWMFullDutyCycle,
 		uint32_t* tAout, uint32_t* tBout, uint32_t* tCout, uint32_t *svm_sector);
 void foc_run_pid_control_pos(bool index_found, float dt, motor_all_state_t *motor);
@@ -260,6 +264,7 @@ float foc_correct_encoder(float obs_angle, float enc_angle, float speed, float s
 float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall_val);
 void foc_run_fw(motor_all_state_t *motor, float dt);
 void foc_hfi_adjust_angle(float ang_err, motor_all_state_t *motor, float dt);
+void foc_update_dynamic_pll_gains(motor_all_state_t *motor, mc_configuration *conf);
 void foc_precalc_values(motor_all_state_t *motor);
 
 #endif /* FOC_MATH_H_ */

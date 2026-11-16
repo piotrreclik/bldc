@@ -2243,7 +2243,7 @@ void mc_interface_adc_inj_int_handler(void) {
 static void update_override_limits(volatile motor_if_state_t *motor, volatile mc_configuration *conf) {
 	bool is_motor_1 = motor == &m_motor_1;
 
-	const float v_in = motor->m_input_voltage_filtered;
+	const float v_in = motor->m_input_voltage_filtered_slower;
 	float rpm_now = 0.0;
 	float rpm_slow = 0.0; // Slow ERPM for fault codes
 
