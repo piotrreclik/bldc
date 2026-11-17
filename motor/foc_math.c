@@ -779,42 +779,22 @@ void foc_hfi_adjust_angle(float ang_err, motor_all_state_t *motor, float dt) {
 }
 
 void foc_update_dynamic_pll_gains(motor_all_state_t *motor, mc_configuration *conf) {
-	// 1. Extract electrical speed directly from the motor struct and convert to ERPM
 	float current_erpm = fabsf(RADPS2RPM_f(motor->m_pll_speed));
 	float abs_erpm = fabsf(current_erpm);
     
-	// 2. Input sanity clamp (hard ceiling at 16,000 ERPM)
 	if (abs_erpm > 16000.0f) {
 		abs_erpm = 16000.0f;
 	}
     
-	// 3. Baseline extraction from configuration
-	float damping_ratio = 0.707f;
-	float base_kp = (conf->foc_pll_kp > 10.0f) ? conf->foc_pll_kp : 2000.0f;
-	float tau_base = (2.0f * damping_ratio) / base_kp;
-	if (tau_base > 0.001f) {
-		tau_base = 0.001f;
-	}
-
-	// 4. Dynamic scaling down to 160us floor at 9500 ERPM target
 	float target_max_erpm = 13000.0f;
-	float min_tau = 0.000160f; // 160us hard limit
-    
-	float scaling_factor = fminf(abs_erpm / target_max_erpm, 1.0f);
-	float tau = tau_base - (scaling_factor * (tau_base - min_tau));
-	if (tau < min_tau) {
-		tau = min_tau;
-	}
-    
-	// 5. Bandwidth calculation and absolute gain boundary clamps
-	float target_fc = 1.0f / (2.0f * M_PI * tau);
-	float omega_c = 2.0f * M_PI * target_fc;
-    
-	float kp_calc = 4.0f * M_PI * damping_ratio * target_fc;
-	float ki_calc = omega_c * omega_c;
+	float max_scale = 2.5f;
+	float scale = 1.0f + (fminf(abs_erpm / target_max_erpm, 1.0f) * (max_scale - 1.0f));
 
-	motor->foc_pll_kp_dyn = fminf(fmaxf(kp_calc, 500.0f), 12000.0f);
-	motor->foc_pll_ki_dyn = fminf(fmaxf(ki_calc, 5000.0f), 300000.0f);
+	float base_kp = (conf->foc_pll_kp > 10.0f) ? conf->foc_pll_kp : 2000.0f;
+	float base_ki = (conf->foc_pll_ki > 10.0f) ? conf->foc_pll_ki : 30000.0f;
+
+	motor->foc_pll_kp_dyn = fminf(base_kp * scale, 10000.0f);
+	motor->foc_pll_ki_dyn = fminf(base_ki * scale, 150000.0f);
 }
 
 void foc_precalc_values(motor_all_state_t *motor) {
